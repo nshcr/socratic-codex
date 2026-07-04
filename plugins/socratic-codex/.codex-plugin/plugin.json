@@ -1,0 +1,35 @@
+{
+  "name": "socratic-codex",
+  "version": "1.0.0",
+  "description": "Goal-lifecycle control for Codex: bind intent, gate risky changes, steer active goals, recover diagnostics, and close acceptance with evidence.",
+  "author": {
+    "name": "Junius Chen"
+  },
+  "homepage": "https://github.com/nshcr/socratic-codex",
+  "repository": "https://github.com/nshcr/socratic-codex",
+  "keywords": [
+    "codex",
+    "goal-steering",
+    "socratic",
+    "diagnostics",
+    "acceptance"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Socratic Codex",
+    "shortDescription": "Control goal lifecycle drift.",
+    "longDescription": "Socratic Codex protects user-owned intent across discovery, goal binding, planning, execution steering, diagnostic recovery, boundary gates, and acceptance closure. It re-anchors on brake or drift signals, asks only action-changing questions, preserves compact goal contracts, distinguishes inspectable facts from user-owned boundaries, and avoids completion claims until evidence matches done criteria. Use it for /goal drafting and steering, solution-shaped requests, risky target changes, stuck diagnostics, and acceptance handoff; skip routine deterministic work outside an active lifecycle.",
+    "developerName": "Junius Chen",
+    "category": "Productivity",
+    "capabilities": [
+      "Reasoning",
+      "Interactive"
+    ],
+    "websiteURL": "https://github.com/nshcr/socratic-codex",
+    "defaultPrompt": [
+      "Use $socratic-codex to bind this goal.",
+      "Use $socratic-codex to steer this lifecycle.",
+      "Use $socratic-codex to close acceptance."
+    ]
+  }
+}

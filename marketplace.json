@@ -1,0 +1,20 @@
+{
+  "name": "socratic-codex",
+  "interface": {
+    "displayName": "Socratic Codex"
+  },
+  "plugins": [
+    {
+      "name": "socratic-codex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/socratic-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
