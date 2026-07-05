@@ -33,6 +33,24 @@ It is useful for advanced Codex sessions where the model is capable enough to do
 
 **中文：** 当“自信但错误地推进”比“在关键处停下来确认一次”代价更高时，就该用它。它尤其适合高级 Codex 会话：模型已经能做复杂工作，但仍需要防止目标漂移、过早声称完成、以及悄悄改变假设。
 
+## Scope and status
+
+Socratic Codex is experimental. It is written for advanced Codex models, usually GPT-5.5-class or stronger, where the model can already inspect evidence, maintain a compact goal contract, and choose when not to ask. Weaker models may follow the words while missing the judgment the plugin relies on.
+
+This repository only ships a Codex plugin for now. The behavior depends on Codex-specific skill loading, implicit invocation, goal-oriented collaboration, and the way Codex exposes tools, workspace state, approvals, and acceptance handoff. Porting the text to another agent is easy; preserving the behavior is the hard part.
+
+There is no benchmark yet. The useful measurement is not whether the plugin sounds more careful, but whether it reduces real drift, bad checkpoints, unsupported completion claims, and wasted diagnostic loops in long-running work. That needs task traces and review criteria that are not ready yet.
+
+Support for more agents may wait until the plugin's effectiveness can be evaluated correctly inside Codex. Until then, adding more agent targets would mostly create maintenance surface without proving that the protocol transfers well.
+
+**中文：** Socratic Codex 目前是 experimental（实验性）的。它通常面向 GPT-5.5 级别或更强的高级 Codex 模型：模型本身要已经具备检查证据、维持紧凑目标契约、判断何时不该提问的能力。较弱模型可能能复述规则，却抓不住这个插件依赖的判断力。
+
+**中文：** 本仓库目前只提供 Codex plugin。它依赖 Codex 的 skill 加载、implicit invocation、目标型协作方式，以及 Codex 暴露工具、工作区状态、审批和验收交接的方式。把文字移植到其他 agent 很容易，难的是保留同等行为。
+
+**中文：** 现在暂时没有 benchmark（基准测试）。真正要衡量的不是插件听起来是否更谨慎，而是它是否在长任务里减少真实目标漂移、错误停顿、无证据完成声明和低效诊断循环。这需要任务轨迹和评估标准，目前还没准备好。
+
+**中文：** 在能正确评估它在 Codex 内部的有效性之前，可能不会接受增加更多 agent 支持。否则只是扩大维护面，却没有证明这套协议能可靠迁移。
+
 ## When to use it
 
 Use `$socratic-codex` for:
