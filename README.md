@@ -6,6 +6,12 @@ It is not a generic "ask better questions" prompt. It gives Codex a goal lifecyc
 
 **中文：** Socratic Codex 是一个 Codex plugin（插件），用来让长任务始终围绕用户真正想要的目标推进。它不是通用提问模板，而是给 Codex 加上一套 goal lifecycle（目标生命周期）控制：先绑定意图，能检查就先检查，只在真正需要用户决策的边界停下，发现漂移时重新校准，最后用证据收尾。
 
+## Why "Socratic"
+
+"Socratic" points to the discipline of using questions to expose assumptions, clarify intent, and test whether an answer is actually justified. In this plugin, that does not mean Codex should keep interrogating the user. It means Codex should question its own assumptions first, inspect available evidence, and ask the user only when the answer would change the next action.
+
+**中文：** “Socratic” 指的是用问题暴露假设、澄清意图、检验答案是否真的站得住。放在这个插件里，它不是让 Codex 不停追问用户，而是要求 Codex 先质疑自己的假设、先检查可获得的证据，只在用户的答案会改变下一步行动时才提问。
+
 ## What it does
 
 Socratic Codex changes how Codex handles work that has more than one obvious step.
