@@ -4,7 +4,7 @@
 
 It gives Codex a goal lifecycle: bind the intent, inspect before asking, checkpoint only at user-owned boundaries, recover when work drifts, and close only with evidence.
 
-**中文摘要：** Socratic Codex 是一个 experimental（实验性）的 Codex plugin（插件），用来让长任务始终围绕用户真正想要的目标推进。它给 Codex 加上一套 goal lifecycle（目标生命周期）：绑定意图、先检查再提问、只在用户拥有的决策边界停下、漂移时重新校准、最后用证据收尾。
+**中文摘要：** Socratic Codex 是一个实验性的 Codex plugin，用来让长任务始终围绕用户真正想要的目标推进。它给 Codex 加上一套 goal lifecycle：绑定意图、先检查再提问、只在用户拥有的决策边界停下、漂移时重新校准，最后用证据收尾。
 
 ## Quick start
 
@@ -31,7 +31,7 @@ codex plugin list
 You should see `socratic-codex@socratic-codex` as installed and enabled.
 Restart Codex after installation. If you enable the bundled hooks, review and trust the Socratic Codex hook definitions in Codex before relying on them.
 
-**中文摘要：** 先用 Codex CLI（命令行界面）添加 marketplace（插件市场）并安装插件，然后在 Codex 会话中通过 `$socratic-codex` 显式调用。安装后可用 `codex plugin marketplace list` 和 `codex plugin list` 验证，正常情况下会看到 `socratic-codex@socratic-codex` 已安装并启用。安装后重启 Codex；如果启用随插件打包的 hooks（钩子），需要先在 Codex 中 review（审查）并 trust（信任）这些 hook 定义。
+**中文摘要：** 先用 Codex CLI 添加 marketplace 并安装插件，然后在 Codex 会话中通过 `$socratic-codex` 显式调用。安装后可用 `codex plugin marketplace list` 和 `codex plugin list` 验证，正常情况下会看到 `socratic-codex@socratic-codex` 已安装并启用。安装后重启 Codex；如果启用随插件打包的 hooks，需要先在 Codex 中完成这些 hook 定义的 review 和 trust。
 
 ## What it changes
 
@@ -56,7 +56,7 @@ The plugin also bundles lifecycle hooks that reinforce the same skill contract:
 
 These hooks do not replace the skill's judgment and are not a complete security boundary. They only add lifecycle context at the points where Codex is most likely to start, cross a boundary, or stop too early. Codex requires users to review and trust plugin-bundled hooks before they run.
 
-**中文摘要：** 插件现在包含 lifecycle hooks（生命周期钩子）来强化同一套 skill contract（技能契约）：在长任务、漂移恢复、诊断或验收提示开始时补充目标生命周期上下文；在明显高风险命令或敏感配置编辑前补充 Boundary Gate 上下文；当回复像是在“完成”但缺少验证语言时，让 Codex 再执行一次验收收尾。这些 hook 不替代 skill 判断，也不是完整安全边界；启用后仍需要用户在 Codex 中 review（审查）并 trust（信任）hook。
+**中文摘要：** 插件现在包含 lifecycle hooks，用来强化同一套 skill contract：在长任务、漂移恢复、诊断或验收提示开始时补充目标生命周期上下文；在明显高风险命令或敏感配置编辑前补充 Boundary Gate 上下文；当回复像是在“完成”但缺少验证语言时，让 Codex 再执行一次验收收尾。这些 hooks 不替代 skill 判断，也不是完整安全边界；启用后仍需要用户在 Codex 中完成 hooks 的 review 和 trust。
 
 ## Why use it
 
@@ -112,7 +112,7 @@ There is no benchmark yet. The useful measurement is not whether the plugin soun
 
 Support for more agents may wait until the plugin's effectiveness can be evaluated correctly inside Codex. Until then, adding more agent targets would mostly create maintenance surface without proving that the protocol transfers well.
 
-**中文摘要：** 这个插件仍处于实验阶段，并且刻意保持窄范围：它主要面向 GPT-5.5 级别或更强的高级 Codex 模型，暂时只发布 Codex plugin，因为它依赖 Codex 的 skill 加载、implicit invocation（隐式调用）、工具/工作区/审批/验收交接等运行环境；目前没有 benchmark（基准测试），真正要评估的是它能否在长任务中减少目标漂移、错误停顿、无证据完成声明和低效诊断循环。在能正确评估 Codex 内效果之前，可能不会接受更多 agent 支持，以免只扩大维护面却无法证明协议可迁移。
+**中文摘要：** 这个插件仍处于实验阶段，并且刻意保持窄范围：它主要面向 GPT-5.5 级别或更强的高级 Codex 模型，暂时只发布为 Codex plugin，因为它依赖 Codex 的 skill 加载、implicit invocation、工具、工作区状态、审批和验收交接等运行环境；目前还没有 benchmark，真正要评估的是它能否在长任务中减少目标漂移、错误停顿、无证据完成声明和低效诊断循环。在能正确评估 Codex 内效果之前，可能不会接受更多 agent 支持，以免只扩大维护面却无法证明协议可迁移。
 
 ## Why "Socratic"
 
@@ -138,7 +138,7 @@ If the marketplace is already added, skip `codex plugin marketplace add ...` and
 For Codex Desktop, install with the same CLI commands, then restart the app so it picks up the plugin.
 Review and trust the bundled hooks after install if you want hook-backed guardrails to run.
 
-**中文摘要：** 如果从本地 clone 安装，进入仓库后执行 `codex plugin marketplace add .` 和 `codex plugin add socratic-codex@socratic-codex`。如果 marketplace 已经添加过，只需要执行安装命令。Codex Desktop 使用同一套 CLI 安装命令，安装后重启应用即可；如果要运行随插件打包的 hook-backed guardrails（hook 驱动护栏），安装后还需要审查并信任这些 hooks。
+**中文摘要：** 如果从本地 clone 安装，进入仓库后执行 `codex plugin marketplace add .` 和 `codex plugin add socratic-codex@socratic-codex`。如果 marketplace 已经添加过，只需要执行安装命令。Codex Desktop 使用同一套 CLI 安装命令，安装后重启应用即可；如果要运行随插件打包的 hook-backed guardrails，安装后还需要完成这些 hooks 的 review 和 trust。
 
 ## Repository layout
 
@@ -154,4 +154,4 @@ plugins/socratic-codex/
 
 The source of truth is `skills/socratic-codex/SKILL.md`. Hooks in `hooks/` are thin lifecycle guardrails aligned to that skill, not a second policy layer. Marketplace discovery starts at `.agents/plugins/marketplace.json`. Plugin display metadata lives in `.codex-plugin/plugin.json` and `agents/openai.yaml`.
 
-**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准。`hooks/` 里的 hook 只是与 skill 对齐的轻量生命周期护栏，不是第二套 policy（策略）层。marketplace 发现入口是 `.agents/plugins/marketplace.json`。插件展示与触发相关元数据在 `.codex-plugin/plugin.json` 和 `agents/openai.yaml` 中。
+**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准。`hooks/` 里的 hooks 只是与 skill 对齐的轻量生命周期护栏，不是第二套 policy 层。marketplace 发现入口是 `.agents/plugins/marketplace.json`。插件展示与触发相关元数据在 `.codex-plugin/plugin.json` 和 `agents/openai.yaml` 中。
