@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${PLUGIN_ROOT}/hooks/socratic_hooks.py user-prompt-submit",
+            "timeout": 10,
+            "statusMessage": "Checking goal lifecycle cues"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${PLUGIN_ROOT}/hooks/socratic_hooks.py pre-tool-use",
+            "timeout": 10,
+            "statusMessage": "Checking goal boundary"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${PLUGIN_ROOT}/hooks/socratic_hooks.py stop",
+            "timeout": 10,
+            "statusMessage": "Checking acceptance close"
+          }
+        ]
+      }
+    ]
+  }
+}
