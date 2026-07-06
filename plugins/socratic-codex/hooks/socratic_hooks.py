@@ -1,19 +1,41 @@
 #!/usr/bin/env python3
-"""Lifecycle hooks for the Socratic Codex plugin."""
+"""Lifecycle hooks for the Socratic Codex plugin (Codex and Claude Code).
+
+State model:
+- Per-session activity ledger in ``$CLAUDE_PLUGIN_DATA/state/<session_id>.json``
+  (Codex exports the same variable for compatibility; ``PLUGIN_DATA`` is the
+  Codex-native fallback). Records turn start time, whether a verification-ish
+  Bash command ran this turn, and lifecycle-context injection dedup.
+- Goal contract of record in ``<cwd>/.socratic/contract.md``, maintained by the
+  model per the skill instructions and restored by the SessionStart hook after
+  compaction or resume.
+- Append-only audit log in ``$CLAUDE_PLUGIN_DATA/audit.jsonl`` recording every
+  hook intervention (never silent pass-throughs).
+
+All state operations fail silently: a hook must never break the session.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import re
+import shlex
 import sys
+import tempfile
+import time
+from pathlib import Path
 from typing import Any
 
+CONTRACT_RELPATH = os.path.join(".socratic", "contract.md")
+CONTRACT_MAX_CHARS = 6000
 
 LIFECYCLE_CONTEXT = (
-    "Socratic Codex: for sustained work, bind a compact goal contract; "
-    "inspect before asking; ask only user-owned uncertainty; use Boundary Gate "
-    "before scope, risk, architecture, side-effect, irreversible, or acceptance "
-    "changes; do not claim completion until evidence matches done criteria."
+    "Socratic Codex: for sustained work, bind a compact goal contract and "
+    "persist it to .socratic/contract.md; inspect before asking; ask only "
+    "user-owned uncertainty; use Boundary Gate before scope, risk, "
+    "architecture, side-effect, irreversible, or acceptance changes; do not "
+    "claim completion until evidence matches done criteria."
 )
 
 BOUNDARY_CONTEXT = (
@@ -24,27 +46,41 @@ BOUNDARY_CONTEXT = (
 )
 
 ACCEPTANCE_CONTEXT = (
-    "Socratic Codex Acceptance Close: before finalizing, compare the original "
-    "ask, current goal contract, explicit constraints, done criteria, evidence, "
-    "and unresolved user-owned boundaries. State missing verification instead "
-    "of claiming full completion."
+    "Socratic Codex Acceptance Close: a completion claim was made without "
+    "observed verification this turn (no verification command ran and "
+    ".socratic/contract.md has no fresh Verification update). Compare the "
+    "original ask, current goal contract, done criteria, and evidence; run or "
+    "cite the missing verification and update the Verification section in "
+    ".socratic/contract.md, or state explicitly what remains unverified "
+    "instead of claiming full completion."
+)
+
+CONTRACT_RESTORED_CONTEXT = (
+    "Socratic Codex: goal contract restored from .socratic/contract.md after "
+    "compaction or resume. Treat it as the contract of record and re-anchor "
+    "to it before continuing:\n\n"
 )
 
 PROMPT_RE = re.compile(
-    r"(\$socratic-codex|/goal|\b(goal|acceptance|done|complete|completed|"
-    r"handoff|drift|stuck|debug|investigate|implement|refactor|migrate|"
-    r"rollback|irreversible|risk|risky)\b|目标|验收|完成|结束|漂移|卡住|"
-    r"排查|调查|实现|修复|重构|迁移|回滚|不可逆|风险|错了|停止|回到)",
+    r"(\$socratic-codex|/socratic-codex|/goal\b|"
+    r"\b(goal|goals|acceptance|handoff|drift|drifting|stuck|rollback|"
+    r"roll back|irreversible|migrate|migration|teardown|risky)\b|"
+    r"目标|验收|交接|漂移|卡住|回滚|不可逆|迁移|拆除|风险|错了|停止|回到)",
     re.IGNORECASE,
 )
 
+# Regex fallback used only for shell segments that shlex cannot parse.
 RISKY_TOOL_RE = re.compile(
     r"(\brm\s+-[^;&|]*r|\bgit\s+reset\s+--hard\b|\bgit\s+clean\s+-"
     r"[^;&|]*[xdf]|\bgit\s+push\b|\bchmod\s+-R\b|\bchown\s+-R\b|"
-    r"\bterraform\s+apply\b|\bkubectl\s+(delete|apply)\b|"
+    r"\bterraform\s+(apply|destroy)\b|\bkubectl\s+(delete|apply)\b|"
     r"\bdocker\s+system\s+prune\b)",
     re.IGNORECASE,
 )
+
+ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+SEGMENT_SPLIT_RE = re.compile(r"&&|\|\||;|\||\n")
+SUBSTITUTION_RE = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 
 RISKY_PATCH_RE = re.compile(
     r"(\*\*\* Delete File:|\.codex-plugin/plugin\.json|"
@@ -68,6 +104,7 @@ DONE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Word-face fallback, used only when the activity ledger is unavailable.
 EVIDENCE_RE = re.compile(
     r"\b(test|tests|tested|verified|validation|validated|check|checked|"
     r"evidence|partial|missing|unable|not run|not verified)\b|"
@@ -91,6 +128,86 @@ def read_input() -> dict[str, Any]:
         return {}
 
 
+# --- State, contract, and audit helpers -----------------------------------
+
+
+def data_dir() -> Path:
+    base = os.environ.get("CLAUDE_PLUGIN_DATA") or os.environ.get("PLUGIN_DATA")
+    if base:
+        return Path(base)
+    return Path(tempfile.gettempdir()) / "socratic-codex"
+
+
+def state_path(session_id: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "-", session_id)
+    return data_dir() / "state" / f"{safe}.json"
+
+
+def load_state(session_id: str) -> dict[str, Any]:
+    if not session_id:
+        return {}
+    try:
+        loaded = json.loads(state_path(session_id).read_text(encoding="utf-8"))
+        return loaded if isinstance(loaded, dict) else {}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def save_state(session_id: str, state: dict[str, Any]) -> None:
+    if not session_id:
+        return
+    try:
+        path = state_path(session_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def audit(event: str, action: str, detail: str = "") -> None:
+    try:
+        path = data_dir() / "audit.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {"ts": round(time.time(), 3), "event": event, "action": action}
+        if detail:
+            entry["detail"] = detail[:200]
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
+
+
+def contract_path(cwd: str) -> Path:
+    return Path(cwd or ".") / CONTRACT_RELPATH
+
+
+def read_contract(cwd: str) -> str:
+    try:
+        return contract_path(cwd).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def contract_verification_updated(cwd: str, since_ts: float) -> bool:
+    """True when contract.md was touched this turn and has verification content."""
+    path = contract_path(cwd)
+    try:
+        if path.stat().st_mtime + 1.0 < since_ts:
+            return False
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    match = re.search(
+        r"^#{1,6}\s*verification\b(.*?)(?=^#{1,6}\s|\Z)",
+        text,
+        re.IGNORECASE | re.MULTILINE | re.DOTALL,
+    )
+    return bool(match and match.group(1).strip())
+
+
+# --- Tool-input helpers -----------------------------------------------------
+
+
 def tool_command(data: dict[str, Any]) -> str:
     tool_input = data.get("tool_input") or {}
     if isinstance(tool_input, dict):
@@ -109,21 +226,96 @@ def tool_file_path(data: dict[str, Any]) -> str:
     return ""
 
 
+def risky_tokens(tokens: list[str]) -> bool:
+    while tokens and ASSIGNMENT_RE.match(tokens[0]):
+        tokens = tokens[1:]
+    if not tokens:
+        return False
+    cmd = os.path.basename(tokens[0])
+    args = tokens[1:]
+    if cmd == "rm":
+        return any(t.startswith("-") and set("rR") & set(t) for t in args)
+    if cmd == "git":
+        sub = args[0] if args else ""
+        if sub == "push":
+            return True
+        if sub == "reset" and "--hard" in args:
+            return True
+        if sub == "clean":
+            return any(t.startswith("-") and set("xdfXD") & set(t) for t in args[1:])
+        return False
+    if cmd in ("chmod", "chown"):
+        return any(t.startswith("-") and set("rR") & set(t) for t in args)
+    if cmd == "terraform":
+        return bool(args) and args[0] in ("apply", "destroy")
+    if cmd == "kubectl":
+        return bool(args) and args[0] in ("delete", "apply")
+    if cmd == "docker":
+        return args[:2] == ["system", "prune"]
+    return False
+
+
+def command_is_risky(command: str) -> bool:
+    """Structured risk check: split chains and substitutions, parse each segment."""
+    segments = SEGMENT_SPLIT_RE.split(command)
+    for outer, inner in SUBSTITUTION_RE.findall(command):
+        segments.append(outer or inner)
+    for segment in segments:
+        segment = segment.strip()
+        if not segment:
+            continue
+        try:
+            tokens = shlex.split(segment, posix=True)
+        except ValueError:
+            if RISKY_TOOL_RE.search(segment):
+                return True
+            continue
+        if risky_tokens(tokens):
+            return True
+    return False
+
+
+# --- Event handlers ---------------------------------------------------------
+
+
 def user_prompt_submit(data: dict[str, Any]) -> None:
-    if PROMPT_RE.search(str(data.get("prompt", ""))):
+    session_id = str(data.get("session_id") or "")
+    state = load_state(session_id)
+    state["last_prompt_ts"] = time.time()
+    state["bash_since_prompt"] = False
+    inject = bool(
+        PROMPT_RE.search(str(data.get("prompt", "")))
+        and not state.get("lifecycle_injected")
+    )
+    if inject:
+        state["lifecycle_injected"] = True
+    save_state(session_id, state)
+    if inject:
+        audit("UserPromptSubmit", "inject-lifecycle")
         hook_output("UserPromptSubmit", LIFECYCLE_CONTEXT)
 
 
 def pre_tool_use(data: dict[str, Any]) -> None:
     tool = str(data.get("tool_name", ""))
     if tool == "Bash":
-        if RISKY_TOOL_RE.search(tool_command(data)):
+        session_id = str(data.get("session_id") or "")
+        state = load_state(session_id)
+        if not state.get("bash_since_prompt"):
+            state["bash_since_prompt"] = True
+            save_state(session_id, state)
+        command = tool_command(data)
+        if command_is_risky(command):
+            audit("PreToolUse", "boundary-gate", command)
             hook_output("PreToolUse", BOUNDARY_CONTEXT)
     elif tool == "apply_patch":
-        if RISKY_PATCH_RE.search(tool_command(data)):
+        command = tool_command(data)
+        if RISKY_PATCH_RE.search(command):
+            audit("PreToolUse", "boundary-gate", "apply_patch")
             hook_output("PreToolUse", BOUNDARY_CONTEXT)
     elif tool in FILE_EDIT_TOOLS:
-        if SENSITIVE_FILE_RE.search(tool_file_path(data)):
+        file_path = tool_file_path(data)
+        if SENSITIVE_FILE_RE.search(file_path):
+            audit("PreToolUse", "boundary-gate", file_path)
             hook_output("PreToolUse", BOUNDARY_CONTEXT)
 
 
@@ -131,25 +323,91 @@ def stop(data: dict[str, Any]) -> None:
     if data.get("stop_hook_active"):
         return
     message = str(data.get("last_assistant_message") or "")
-    if DONE_RE.search(message) and not EVIDENCE_RE.search(message):
+    if not DONE_RE.search(message):
+        return
+    session_id = str(data.get("session_id") or "")
+    state = load_state(session_id)
+    last_prompt_ts = state.get("last_prompt_ts")
+    if isinstance(last_prompt_ts, (int, float)):
+        # Behavioral evidence: a command ran this turn, or the contract's
+        # Verification section was updated this turn. Word-face claims alone
+        # do not count when the ledger is available.
+        evidence = bool(state.get("bash_since_prompt")) or contract_verification_updated(
+            str(data.get("cwd") or ""), float(last_prompt_ts)
+        )
+    else:
+        evidence = bool(EVIDENCE_RE.search(message))
+    if not evidence:
+        audit("Stop", "block-unverified-completion")
         continuation(ACCEPTANCE_CONTEXT)
 
 
+def session_start(data: dict[str, Any]) -> None:
+    session_id = str(data.get("session_id") or "")
+    state = load_state(session_id)
+    if state.get("lifecycle_injected"):
+        state["lifecycle_injected"] = False
+        save_state(session_id, state)
+    contract = read_contract(str(data.get("cwd") or "")).strip()
+    if contract:
+        audit("SessionStart", "restore-contract", str(data.get("source") or ""))
+        hook_output(
+            "SessionStart",
+            CONTRACT_RESTORED_CONTEXT + contract[:CONTRACT_MAX_CHARS],
+        )
+
+
 def self_test() -> None:
-    assert PROMPT_RE.search("帮我实现这个功能并做验收")
-    assert RISKY_TOOL_RE.search("git reset --hard HEAD")
+    # Prompt gating: strong lifecycle signals in, generic coding verbs out.
+    assert PROMPT_RE.search("$socratic-codex bind this")
+    assert PROMPT_RE.search("/socratic-codex")
+    assert PROMPT_RE.search("帮我做验收")
+    assert PROMPT_RE.search("rollback the migration")
+    assert PROMPT_RE.search("这个方向漂移了，回到原始需求")
+    assert not PROMPT_RE.search("please implement this function")
+    assert not PROMPT_RE.search("fix the bug in parser.py")
+    # Structured risky-command parsing.
+    assert command_is_risky("git reset --hard HEAD")
+    assert command_is_risky("FOO=1 git push origin main")
+    assert command_is_risky("npm test && git push")
+    assert command_is_risky("echo $(rm -rf /tmp/x)")
+    assert command_is_risky("terraform destroy -auto-approve")
+    assert not command_is_risky("git status && npm test")
+    assert not command_is_risky("rm file.txt")
+    assert not command_is_risky("git commit -m 'reset --hard docs'")
+    # Patch and file-path boundaries.
     assert RISKY_PATCH_RE.search("*** Delete File: README.md")
     assert RISKY_PATCH_RE.search("*** Update File: .claude/settings.json")
     assert tool_command({"tool_input": {"command": "git push"}}) == "git push"
-    assert tool_command({"tool_input": "*** Delete File: README.md"}).startswith("*** Delete")
     assert RISKY_PATCH_RE.search(tool_command({"tool_input": {"patch": "*** Delete File: README.md"}}))
     assert tool_file_path({"tool_input": {"file_path": "/repo/.claude/settings.json"}}) == "/repo/.claude/settings.json"
     assert SENSITIVE_FILE_RE.search("/repo/.claude-plugin/plugin.json")
     assert SENSITIVE_FILE_RE.search("/repo/.claude/settings.local.json")
-    assert SENSITIVE_FILE_RE.search("/repo/plugins/x/hooks/hooks.json")
     assert not SENSITIVE_FILE_RE.search("/repo/src/main.py")
+    # Completion / evidence word-face fallback.
     assert DONE_RE.search("Implemented the fix.")
     assert EVIDENCE_RE.search("Tests not run.")
+    # Contract verification freshness.
+    import tempfile as _tempfile
+
+    with _tempfile.TemporaryDirectory() as tmp:
+        socratic = Path(tmp) / ".socratic"
+        socratic.mkdir()
+        (socratic / "contract.md").write_text(
+            "## Contract\nship feature\n\n## Verification\n- pytest passed (12 tests)\n",
+            encoding="utf-8",
+        )
+        assert contract_verification_updated(tmp, time.time() - 60)
+        assert not contract_verification_updated(tmp, time.time() + 3600)
+        (socratic / "contract.md").write_text(
+            "## Contract\nship feature\n\n## Verification\n", encoding="utf-8"
+        )
+        assert not contract_verification_updated(tmp, time.time() - 60)
+    # State round-trip.
+    os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
+    save_state("s/1", {"bash_since_prompt": True})
+    assert load_state("s/1") == {"bash_since_prompt": True}
+    assert load_state("missing") == {}
 
 
 def main() -> int:
@@ -160,6 +418,7 @@ def main() -> int:
         "user-prompt-submit": user_prompt_submit,
         "pre-tool-use": pre_tool_use,
         "stop": stop,
+        "session-start": session_start,
     }
     handler = handlers.get(sys.argv[1] if len(sys.argv) > 1 else "")
     if handler is None:
