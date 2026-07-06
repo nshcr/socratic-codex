@@ -47,10 +47,20 @@ RISKY_TOOL_RE = re.compile(
 )
 
 RISKY_PATCH_RE = re.compile(
-    r"(\*\*\* Delete File:|\.codex-plugin/plugin\.json|hooks/hooks\.json|"
-    r"requirements\.toml|config\.toml)",
+    r"(\*\*\* Delete File:|\.codex-plugin/plugin\.json|"
+    r"\.claude-plugin/plugin\.json|hooks/hooks\.json|"
+    r"requirements\.toml|config\.toml|\.claude/settings(\.local)?\.json)",
     re.IGNORECASE,
 )
+
+SENSITIVE_FILE_RE = re.compile(
+    r"(\.codex-plugin/plugin\.json|\.claude-plugin/plugin\.json|"
+    r"hooks/hooks\.json|requirements\.toml|\.codex/config\.toml|"
+    r"\.claude/settings(\.local)?\.json|\.mcp\.json)",
+    re.IGNORECASE,
+)
+
+FILE_EDIT_TOOLS = frozenset({"Edit", "Write", "NotebookEdit"})
 
 DONE_RE = re.compile(
     r"\b(done|complete|completed|fixed|implemented|finished|ready|shipped)\b|"
@@ -92,6 +102,13 @@ def tool_command(data: dict[str, Any]) -> str:
     return str(tool_input)
 
 
+def tool_file_path(data: dict[str, Any]) -> str:
+    tool_input = data.get("tool_input") or {}
+    if isinstance(tool_input, dict):
+        return str(tool_input.get("file_path") or tool_input.get("notebook_path") or "")
+    return ""
+
+
 def user_prompt_submit(data: dict[str, Any]) -> None:
     if PROMPT_RE.search(str(data.get("prompt", ""))):
         hook_output("UserPromptSubmit", LIFECYCLE_CONTEXT)
@@ -99,11 +116,15 @@ def user_prompt_submit(data: dict[str, Any]) -> None:
 
 def pre_tool_use(data: dict[str, Any]) -> None:
     tool = str(data.get("tool_name", ""))
-    command = tool_command(data)
-    if tool == "Bash" and RISKY_TOOL_RE.search(command):
-        hook_output("PreToolUse", BOUNDARY_CONTEXT)
-    elif tool == "apply_patch" and RISKY_PATCH_RE.search(command):
-        hook_output("PreToolUse", BOUNDARY_CONTEXT)
+    if tool == "Bash":
+        if RISKY_TOOL_RE.search(tool_command(data)):
+            hook_output("PreToolUse", BOUNDARY_CONTEXT)
+    elif tool == "apply_patch":
+        if RISKY_PATCH_RE.search(tool_command(data)):
+            hook_output("PreToolUse", BOUNDARY_CONTEXT)
+    elif tool in FILE_EDIT_TOOLS:
+        if SENSITIVE_FILE_RE.search(tool_file_path(data)):
+            hook_output("PreToolUse", BOUNDARY_CONTEXT)
 
 
 def stop(data: dict[str, Any]) -> None:
@@ -118,9 +139,15 @@ def self_test() -> None:
     assert PROMPT_RE.search("帮我实现这个功能并做验收")
     assert RISKY_TOOL_RE.search("git reset --hard HEAD")
     assert RISKY_PATCH_RE.search("*** Delete File: README.md")
+    assert RISKY_PATCH_RE.search("*** Update File: .claude/settings.json")
     assert tool_command({"tool_input": {"command": "git push"}}) == "git push"
     assert tool_command({"tool_input": "*** Delete File: README.md"}).startswith("*** Delete")
     assert RISKY_PATCH_RE.search(tool_command({"tool_input": {"patch": "*** Delete File: README.md"}}))
+    assert tool_file_path({"tool_input": {"file_path": "/repo/.claude/settings.json"}}) == "/repo/.claude/settings.json"
+    assert SENSITIVE_FILE_RE.search("/repo/.claude-plugin/plugin.json")
+    assert SENSITIVE_FILE_RE.search("/repo/.claude/settings.local.json")
+    assert SENSITIVE_FILE_RE.search("/repo/plugins/x/hooks/hooks.json")
+    assert not SENSITIVE_FILE_RE.search("/repo/src/main.py")
     assert DONE_RE.search("Implemented the fix.")
     assert EVIDENCE_RE.search("Tests not run.")
 
