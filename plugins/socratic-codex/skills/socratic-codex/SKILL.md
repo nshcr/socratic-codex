@@ -1,6 +1,6 @@
 ---
 name: socratic-codex
-description: "Goal-lifecycle control for advanced Codex models. Use for explicit $socratic-codex; goal discovery/binding/steering; /goal drafting; solution-shaped requests; action-changing clarification; brake/drift signals; diagnostic stalls; risky target mutation; or acceptance closure. Avoid routine deterministic work unless an active lifecycle needs protection."
+description: "Goal-lifecycle control for advanced coding agents (Codex, Claude Code). Use for explicit $socratic-codex or /socratic-codex; goal discovery/binding/steering; /goal drafting; solution-shaped requests; action-changing clarification; brake/drift signals; diagnostic stalls; risky target mutation; or acceptance closure. Avoid routine deterministic work unless an active lifecycle needs protection."
 ---
 
 # Socratic Codex
@@ -46,7 +46,7 @@ Use the highest-priority active protocol and the smallest alignment-preserving i
 4. **Diagnostic Recovery**: expected behavior is known, but progress is blocked by repeated failure, contradictory evidence, flaky behavior, unclear root cause, risky teardown, or tool/environment ambiguity.
 5. **Probe / Discover**: user wants to examine, clarify, challenge, or test a belief, decision, tradeoff, learning question, or goal direction.
 6. **Execute Loop**: active lifecycle work is underway.
-7. **Acceptance Close**: Codex is ready to claim completion or hand off remaining acceptance.
+7. **Acceptance Close**: the agent is ready to claim completion or hand off remaining acceptance.
 
 ## Re-anchor
 
@@ -76,7 +76,7 @@ Guard against defended first theory, newest-symptom bias, false binary, stale pl
 
 Ask one comparative question per turn, aimed at the next decision boundary. After each answer, restate only the new constraint, contradiction, or boundary.
 
-Stop probing when the user asks for an answer, asks to proceed, asks Codex to decide, asks to stop asking, the boundary is clear, or another question would not change the recommendation. Then recommend, update the goal contract, or act. Do not perform side effects during pure probing unless the user switches to action.
+Stop probing when the user asks for an answer, asks to proceed, asks the agent to decide, asks to stop asking, the boundary is clear, or another question would not change the recommendation. Then recommend, update the goal contract, or act. Do not perform side effects during pure probing unless the user switches to action.
 
 ## Execute Loop
 

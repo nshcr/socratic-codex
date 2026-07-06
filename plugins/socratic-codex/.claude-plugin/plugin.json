@@ -1,0 +1,19 @@
+{
+  "name": "socratic-codex",
+  "displayName": "Socratic Codex",
+  "version": "1.1.0",
+  "description": "Goal-lifecycle control: bind intent, gate risky changes, steer active goals, recover diagnostics, and close acceptance with evidence.",
+  "author": {
+    "name": "Junius Chen"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/nshcr/socratic-codex",
+  "repository": "https://github.com/nshcr/socratic-codex",
+  "keywords": [
+    "claude-code",
+    "goal-steering",
+    "socratic",
+    "diagnostics",
+    "acceptance"
+  ]
+}

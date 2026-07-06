@@ -1,0 +1,25 @@
+{
+  "name": "socratic-codex",
+  "owner": {
+    "name": "Junius Chen",
+    "url": "https://github.com/nshcr"
+  },
+  "metadata": {
+    "description": "Goal-lifecycle control plugins for coding agents.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "socratic-codex",
+      "source": "./plugins/socratic-codex",
+      "description": "Goal-lifecycle control: bind intent, gate risky changes, steer active goals, recover diagnostics, and close acceptance with evidence.",
+      "category": "productivity",
+      "keywords": [
+        "goal-steering",
+        "socratic",
+        "diagnostics",
+        "acceptance"
+      ]
+    }
+  ]
+}

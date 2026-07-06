@@ -1,10 +1,10 @@
 # Socratic Codex
 
-**Socratic Codex is an experimental Codex plugin for keeping long-running work aligned with the user's actual goal.**
+**Socratic Codex is an experimental agent plugin for keeping long-running work aligned with the user's actual goal. It ships for both Codex and Claude Code.**
 
-It gives Codex a goal lifecycle: bind the intent, inspect before asking, checkpoint only at user-owned boundaries, recover when work drifts, and close only with evidence.
+It gives the agent a goal lifecycle: bind the intent, inspect before asking, checkpoint only at user-owned boundaries, recover when work drifts, and close only with evidence.
 
-**中文摘要：** Socratic Codex 是一个实验性的 Codex plugin，用来让长任务始终围绕用户真正想要的目标推进。它给 Codex 加上一套 goal lifecycle：绑定意图、先检查再提问、只在用户拥有的决策边界停下、漂移时重新校准，最后用证据收尾。
+**中文摘要：** Socratic Codex 是一个实验性的 agent plugin，同时支持 Codex 和 Claude Code，用来让长任务始终围绕用户真正想要的目标推进。它给 agent 加上一套 goal lifecycle：绑定意图、先检查再提问、只在用户拥有的决策边界停下、漂移时重新校准，最后用证据收尾。
 
 ## Quick start
 
@@ -32,6 +32,31 @@ You should see `socratic-codex@socratic-codex` as installed and enabled.
 Restart Codex after installation. If you enable the bundled hooks, review and trust the Socratic Codex hook definitions in Codex before relying on them.
 
 **中文摘要：** 先用 Codex CLI 添加 marketplace 并安装插件，然后在 Codex 会话中通过 `$socratic-codex` 显式调用。安装后可用 `codex plugin marketplace list` 和 `codex plugin list` 验证，正常情况下会看到 `socratic-codex@socratic-codex` 已安装并启用。安装后重启 Codex；如果启用随插件打包的 hooks，需要先在 Codex 中完成这些 hook 定义的 review 和 trust。
+
+## Quick start (Claude Code)
+
+```bash
+claude plugin marketplace add nshcr/socratic-codex
+claude plugin install socratic-codex@socratic-codex
+```
+
+Then invoke it in a Claude Code session:
+
+```text
+/socratic-codex
+Use the socratic-codex skill to bind this goal.
+Use the socratic-codex skill to close acceptance.
+```
+
+Claude Code can also invoke the skill implicitly based on its description. Check installation:
+
+```bash
+claude plugin list
+```
+
+The bundled hooks load automatically from the plugin's `hooks/hooks.json` when the plugin is enabled. Hook commands run with your user permissions, so review `hooks/socratic_hooks.py` before enabling if that matters in your environment.
+
+**中文摘要：** Claude Code 用户用 `claude plugin marketplace add nshcr/socratic-codex` 添加 marketplace，再用 `claude plugin install socratic-codex@socratic-codex` 安装。会话中可用 `/socratic-codex` 显式调用，Claude Code 也会根据 skill 描述自动调用。插件启用后，打包的 hooks 会从 `hooks/hooks.json` 自动加载；hooks 以你的用户权限运行，建议先 review `hooks/socratic_hooks.py`。
 
 ## What it changes
 
@@ -104,15 +129,13 @@ You should see:
 
 Socratic Codex is experimental and intentionally narrow.
 
-It is written for advanced Codex models, usually GPT-5.5-class or stronger, where the model can already inspect evidence, maintain a compact goal contract, and choose when not to ask. Weaker models may follow the words while missing the judgment the plugin relies on.
+It is written for advanced models, usually GPT-5.5-class, Claude Sonnet 4.5-class, or stronger, where the model can already inspect evidence, maintain a compact goal contract, and choose when not to ask. Weaker models may follow the words while missing the judgment the plugin relies on.
 
-This repository only ships a Codex plugin for now. The behavior depends on Codex-specific skill loading, implicit invocation, goal-oriented collaboration, and the way Codex exposes tools, workspace state, approvals, and acceptance handoff. Porting the text to another agent is easy; preserving the behavior is the hard part.
+This repository ships one plugin for two hosts: Codex (via `.codex-plugin/` and `.agents/plugins/marketplace.json`) and Claude Code (via `.claude-plugin/`). Both hosts load the same `SKILL.md` and the same hooks. The behavior still depends on host-specific skill loading, implicit invocation, goal-oriented collaboration, and how each host exposes tools, workspace state, approvals, and acceptance handoff. Porting the text is easy; preserving the behavior is the hard part, so treat non-Codex behavior as less validated.
 
 There is no benchmark yet. The useful measurement is not whether the plugin sounds more careful, but whether it reduces real drift, bad checkpoints, unsupported completion claims, and wasted diagnostic loops in long-running work. That needs task traces and review criteria that are not ready yet.
 
-Support for more agents may wait until the plugin's effectiveness can be evaluated correctly inside Codex. Until then, adding more agent targets would mostly create maintenance surface without proving that the protocol transfers well.
-
-**中文摘要：** 这个插件仍处于实验阶段，并且刻意保持窄范围：它主要面向 GPT-5.5 级别或更强的高级 Codex 模型，暂时只发布为 Codex plugin，因为它依赖 Codex 的 skill 加载、implicit invocation、工具、工作区状态、审批和验收交接等运行环境；目前还没有 benchmark，真正要评估的是它能否在长任务中减少目标漂移、错误停顿、无证据完成声明和低效诊断循环。在能正确评估 Codex 内效果之前，可能不会接受更多 agent 支持，以免只扩大维护面却无法证明协议可迁移。
+**中文摘要：** 这个插件仍处于实验阶段，并且刻意保持窄范围：它主要面向高级推理模型。仓库现在同时发布 Codex 和 Claude Code 两套 plugin 入口，共用同一份 SKILL.md 和 hooks，但行为仍依赖各 host 的 skill 加载、implicit invocation、工具、工作区状态、审批和验收交接等运行环境；目前还没有 benchmark，真正要评估的是它能否在长任务中减少目标漂移、错误停顿、无证据完成声明和低效诊断循环。
 
 ## Why "Socratic"
 
@@ -138,20 +161,29 @@ If the marketplace is already added, skip `codex plugin marketplace add ...` and
 For Codex Desktop, install with the same CLI commands, then restart the app so it picks up the plugin.
 Review and trust the bundled hooks after install if you want hook-backed guardrails to run.
 
-**中文摘要：** 如果从本地 clone 安装，进入仓库后执行 `codex plugin marketplace add .` 和 `codex plugin add socratic-codex@socratic-codex`。如果 marketplace 已经添加过，只需要执行安装命令。Codex Desktop 使用同一套 CLI 安装命令，安装后重启应用即可；如果要运行随插件打包的 hook-backed guardrails，安装后还需要完成这些 hooks 的 review 和 trust。
+For Claude Code, the same clone works:
+
+```bash
+claude plugin marketplace add .
+claude plugin install socratic-codex@socratic-codex
+```
+
+**中文摘要：** 如果从本地 clone 安装，进入仓库后执行 `codex plugin marketplace add .` 和 `codex plugin add socratic-codex@socratic-codex`。如果 marketplace 已经添加过，只需要执行安装命令。Codex Desktop 使用同一套 CLI 安装命令，安装后重启应用即可；如果要运行随插件打包的 hook-backed guardrails，安装后还需要完成这些 hooks 的 review 和 trust。Claude Code 用户在同一份 clone 里执行 `claude plugin marketplace add .` 和 `claude plugin install socratic-codex@socratic-codex` 即可。
 
 ## Repository layout
 
 ```text
-./.agents/plugins/marketplace.json
+./.agents/plugins/marketplace.json    # Codex marketplace
+./.claude-plugin/marketplace.json     # Claude Code marketplace
 plugins/socratic-codex/
-  .codex-plugin/plugin.json
-  hooks/hooks.json
+  .codex-plugin/plugin.json           # Codex plugin manifest
+  .claude-plugin/plugin.json          # Claude Code plugin manifest
+  hooks/hooks.json                    # Shared lifecycle hooks (both hosts)
   hooks/socratic_hooks.py
-  skills/socratic-codex/SKILL.md
+  skills/socratic-codex/SKILL.md      # Shared skill (both hosts)
   skills/socratic-codex/agents/openai.yaml
 ```
 
-The source of truth is `skills/socratic-codex/SKILL.md`. Hooks in `hooks/` are thin lifecycle guardrails aligned to that skill, not a second policy layer. Marketplace discovery starts at `.agents/plugins/marketplace.json`. Plugin display metadata lives in `.codex-plugin/plugin.json` and `agents/openai.yaml`.
+The source of truth is `skills/socratic-codex/SKILL.md`. Hooks in `hooks/` are thin lifecycle guardrails aligned to that skill, not a second policy layer. Both hosts share `hooks/hooks.json`: its commands reference `${CLAUDE_PLUGIN_ROOT}`, which Claude Code sets natively and Codex sets for compatibility. Codex marketplace discovery starts at `.agents/plugins/marketplace.json`; Claude Code discovery starts at `.claude-plugin/marketplace.json`. Codex display metadata lives in `.codex-plugin/plugin.json` and `agents/openai.yaml`; Claude Code metadata lives in `.claude-plugin/plugin.json`.
 
-**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准。`hooks/` 里的 hooks 只是与 skill 对齐的轻量生命周期护栏，不是第二套 policy 层。marketplace 发现入口是 `.agents/plugins/marketplace.json`。插件展示与触发相关元数据在 `.codex-plugin/plugin.json` 和 `agents/openai.yaml` 中。
+**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准。`hooks/` 里的 hooks 只是与 skill 对齐的轻量生命周期护栏，不是第二套 policy 层。两个 host 共用同一份 `hooks/hooks.json`：命令里的 `${CLAUDE_PLUGIN_ROOT}` 由 Claude Code 原生提供，Codex 也会为兼容而设置。Codex 的 marketplace 入口是 `.agents/plugins/marketplace.json`，Claude Code 的入口是 `.claude-plugin/marketplace.json`；展示元数据分别在 `.codex-plugin/plugin.json`（及 `agents/openai.yaml`）和 `.claude-plugin/plugin.json` 中。
