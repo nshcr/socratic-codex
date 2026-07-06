@@ -12,7 +12,7 @@
     {
       "name": "socratic-codex",
       "source": "./plugins/socratic-codex",
-      "description": "Goal-lifecycle control: bind intent, gate risky changes, steer active goals, recover diagnostics, and close acceptance with evidence.",
+      "description": "Goal-lifecycle control: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
       "category": "productivity",
       "keywords": [
         "goal-steering",

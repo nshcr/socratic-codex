@@ -1,7 +1,7 @@
 {
   "name": "socratic-codex",
   "version": "1.2.0",
-  "description": "Goal-lifecycle control for Codex: bind intent, gate risky changes, steer active goals, recover diagnostics, and close acceptance with evidence.",
+  "description": "Goal-lifecycle control for Codex: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
   "author": {
     "name": "Junius Chen"
   },
@@ -19,7 +19,7 @@
   "interface": {
     "displayName": "Socratic Codex",
     "shortDescription": "Control goal lifecycle drift.",
-    "longDescription": "Socratic Codex protects user-owned intent across discovery, goal binding, planning, execution steering, diagnostic recovery, boundary gates, and acceptance closure. It re-anchors on brake or drift signals, asks only action-changing questions, preserves compact goal contracts, distinguishes inspectable facts from user-owned boundaries, and avoids completion claims until evidence matches done criteria. Use it for /goal drafting and steering, solution-shaped requests, risky target changes, stuck diagnostics, and acceptance handoff; skip routine deterministic work outside an active lifecycle.",
+    "longDescription": "Socratic Codex protects user-owned intent across discovery, goal binding, planning, execution steering, diagnostic recovery, boundary gates, and acceptance closure. It persists the goal contract to .socratic/contract.md, restores it after compaction or resume, re-anchors on brake or drift signals, asks only action-changing questions, and blocks completion claims until behavioral evidence (verification commands run, or a fresh Verification record in the contract) matches done criteria. Use it for /goal drafting and steering, solution-shaped requests, risky target changes, stuck diagnostics, and acceptance handoff; skip routine deterministic work outside an active lifecycle.",
     "developerName": "Junius Chen",
     "category": "Productivity",
     "capabilities": [

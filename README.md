@@ -73,15 +73,18 @@ Socratic Codex changes how Codex handles work that has more than one obvious ste
 
 ## Hook-backed guardrails
 
-The plugin also bundles lifecycle hooks that reinforce the same skill contract:
+The plugin bundles lifecycle hooks that reinforce the same skill contract with deterministic state:
 
-- `UserPromptSubmit` adds compact goal-lifecycle context when the prompt looks like sustained work, drift recovery, diagnostics, or acceptance.
-- `PreToolUse` adds Boundary Gate context before obviously risky shell commands or sensitive plugin/config edits.
-- `Stop` asks Codex to continue once when a completion claim appears without verification language.
+- **Contract persistence and restore.** The skill maintains the goal contract in `.socratic/contract.md` (contract, delta log, verification evidence). A `SessionStart` hook re-injects it after compaction or resume, so the contract of record survives context loss. Consider adding `.socratic/` to your local git excludes.
+- **Behavioral acceptance gate.** The `Stop` hook keeps a per-session activity ledger (in the plugin data directory) and blocks a completion claim once when *no verification command ran this turn* and *the contract's Verification section was not updated this turn*. Saying "verified" is not enough; doing something verifiable is what counts. Word-face checking remains only as a fallback when the ledger is unavailable.
+- **Boundary Gate before risky calls.** `PreToolUse` parses shell commands structurally (chains, substitutions, env prefixes) against a destructive-command table, and gates edits to sensitive plugin/agent config files (`plugin.json`, `hooks.json`, `settings.json`, `.mcp.json`, `config.toml`).
+- **Lifecycle context, once.** `UserPromptSubmit` injects compact lifecycle context only on strong signals (`$socratic-codex`, `/goal`, acceptance/drift/rollback language) and only once per session; the flag resets after compaction.
+- **Audit log.** Every hook intervention (injection or block) is appended to `audit.jsonl` in the plugin data directory, so you can inspect whether and how the guardrails actually fire.
+- **Claude Code only: semantic acceptance gate.** A prompt-type `Stop` hook (in `hooks/claude.json`) asks a fast model to judge whether a completion claim cites concrete evidence. Codex parses but skips prompt-type hooks, so this layer activates only in Claude Code. It adds a small model call at turn end; disable the plugin if that cost matters more than the gate.
 
-These hooks do not replace the skill's judgment and are not a complete security boundary. They only add lifecycle context at the points where Codex is most likely to start, cross a boundary, or stop too early. Codex requires users to review and trust plugin-bundled hooks before they run.
+These hooks do not replace the skill's judgment and are not a complete security boundary. Codex cannot intercept `unified_exec` shell paths, and regex/parse-based gates can be bypassed; treat them as reminders at the points where the agent is most likely to start, cross a boundary, or stop too early. Codex requires users to review and trust plugin-bundled hooks before they run; Claude Code loads plugin hooks when the plugin is enabled.
 
-**中文摘要：** 插件现在包含 lifecycle hooks，用来强化同一套 skill contract：在长任务、漂移恢复、诊断或验收提示开始时补充目标生命周期上下文；在明显高风险命令或敏感配置编辑前补充 Boundary Gate 上下文；当回复像是在“完成”但缺少验证语言时，让 Codex 再执行一次验收收尾。这些 hooks 不替代 skill 判断，也不是完整安全边界；启用后仍需要用户在 Codex 中完成 hooks 的 review 和 trust。
+**中文摘要：** hooks 现在带确定性状态：skill 把目标契约写入 `.socratic/contract.md`，`SessionStart` hook 在 compaction/resume 后自动恢复契约；`Stop` hook 维护会话级行为台账，只有当本回合既没跑过验证命令、也没更新契约的 Verification 段时才拦截完成声明（只说“已验证”不算数）；`PreToolUse` 用结构化解析而非单条正则识别危险命令；生命周期上下文每会话只注入一次；所有干预写入 audit 日志可事后审计。Claude Code 独享一层 prompt 型语义验收门（Codex 会解析但跳过）。这些 hooks 仍不是完整安全边界：Codex 的 `unified_exec` 路径无法拦截，解析门也可被绕过，它们是关键时点的提醒层而非强制层。
 
 ## Why use it
 
@@ -179,11 +182,13 @@ plugins/socratic-codex/
   .codex-plugin/plugin.json           # Codex plugin manifest
   .claude-plugin/plugin.json          # Claude Code plugin manifest
   hooks/hooks.json                    # Shared lifecycle hooks (both hosts)
-  hooks/socratic_hooks.py
-  skills/socratic-codex/SKILL.md      # Shared skill (both hosts)
+  hooks/claude.json                   # Claude-only semantic acceptance gate
+  hooks/socratic_hooks.py             # Hook logic: ledger, contract restore, audit
+  skills/socratic-codex/SKILL.md      # Shared skill core (both hosts)
+  skills/socratic-codex/references/   # Progressive-disclosure protocol details
   skills/socratic-codex/agents/openai.yaml
 ```
 
-The source of truth is `skills/socratic-codex/SKILL.md`. Hooks in `hooks/` are thin lifecycle guardrails aligned to that skill, not a second policy layer. Both hosts share `hooks/hooks.json`: its commands reference `${CLAUDE_PLUGIN_ROOT}`, which Claude Code sets natively and Codex sets for compatibility. Codex marketplace discovery starts at `.agents/plugins/marketplace.json`; Claude Code discovery starts at `.claude-plugin/marketplace.json`. Codex display metadata lives in `.codex-plugin/plugin.json` and `agents/openai.yaml`; Claude Code metadata lives in `.claude-plugin/plugin.json`.
+The source of truth is `skills/socratic-codex/SKILL.md`, with the full Diagnostic Recovery and Acceptance Close protocols split into `references/` so simple invocations pay less context. Hooks in `hooks/` are lifecycle guardrails aligned to that skill, not a second policy layer. Both hosts share `hooks/hooks.json`: its commands reference `${CLAUDE_PLUGIN_ROOT}`, which Claude Code sets natively and Codex sets for compatibility. `hooks/claude.json` is loaded only through the Claude manifest. Runtime state (session ledger, audit log) lives in the plugin data directory; the goal contract lives in the workspace at `.socratic/contract.md`. Codex marketplace discovery starts at `.agents/plugins/marketplace.json`; Claude Code discovery starts at `.claude-plugin/marketplace.json`.
 
-**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准。`hooks/` 里的 hooks 只是与 skill 对齐的轻量生命周期护栏，不是第二套 policy 层。两个 host 共用同一份 `hooks/hooks.json`：命令里的 `${CLAUDE_PLUGIN_ROOT}` 由 Claude Code 原生提供，Codex 也会为兼容而设置。Codex 的 marketplace 入口是 `.agents/plugins/marketplace.json`，Claude Code 的入口是 `.claude-plugin/marketplace.json`；展示元数据分别在 `.codex-plugin/plugin.json`（及 `agents/openai.yaml`）和 `.claude-plugin/plugin.json` 中。
+**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准，诊断与验收的完整协议拆到 `references/` 按需加载以降低简单任务的上下文成本。两个 host 共用 `hooks/hooks.json`（`${CLAUDE_PLUGIN_ROOT}` 双端兼容），`hooks/claude.json` 仅由 Claude manifest 加载。运行时状态（会话台账、审计日志）存在插件数据目录，目标契约存在工作区 `.socratic/contract.md`。Codex 的 marketplace 入口是 `.agents/plugins/marketplace.json`，Claude Code 的入口是 `.claude-plugin/marketplace.json`。
