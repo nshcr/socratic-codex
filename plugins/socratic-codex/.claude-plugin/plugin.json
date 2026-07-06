@@ -1,7 +1,7 @@
 {
   "name": "socratic-codex",
   "displayName": "Socratic Codex",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Goal-lifecycle control: bind intent, gate risky changes, steer active goals, recover diagnostics, and close acceptance with evidence.",
   "author": {
     "name": "Junius Chen"
