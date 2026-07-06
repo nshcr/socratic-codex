@@ -36,6 +36,10 @@ If the user declines questions, bind defaults as **assumed**, continue only when
 
 When scope, risk, assumptions, verification, plan, or done criteria change, record a compact delta: explicit user change, inspected external fact, or model drift. Drift requires re-anchor. Changes caused by model convenience, plan inertia, incomplete tests, or current implementation are drift unless supported by a higher truth source.
 
+## Contract Persistence
+
+Maintain the contract of record in `.socratic/contract.md` at the workspace root. Create it at goal binding; update it on every contract delta. Keep three sections: `## Contract` (the current bound contract), `## Delta Log` (compact dated deltas with their source), and `## Verification` (evidence actually gathered against done criteria: commands run, tests executed, observed output). Before any completion claim, update `## Verification` with what was actually run and observed — hooks check for this. After compaction or resume, the restored file is the contract of record; re-anchor to it before continuing. Do not commit `.socratic/` unless the user asks; suggest adding it to local git excludes.
+
 ## Routing Precedence
 
 Use the highest-priority active protocol and the smallest alignment-preserving intervention. Resume the lifecycle after resolving interrupts. Any completion claim routes to Acceptance Close first.
@@ -64,13 +68,9 @@ If the user refuses questions, use the default only when safe enough, reversible
 
 Precondition: expected behavior is known. If not, bind or repair the contract first unless action is frozen.
 
-Keep a compact evidence ledger: expected, observed, exact error/mismatch, changed inputs, last known good state, and observed/inferred/unknown status.
+Core loop: keep a compact evidence ledger (expected, observed, exact mismatch, last known good); secure the smallest runnable reproducer derived from the contract or original failure, never from the current implementation alone; hold 2-4 falsifiable hypotheses; run the smallest observation that eliminates one. Record ruled-out facts and a reassembly path before teardown or multi-file edits.
 
-If ground truth is missing, create or identify the smallest runnable test, reproducer, assertion, fixture, command, or observable check. Generated tests must derive from the goal contract, original failure, or confirmed expected behavior, not current implementation alone.
-
-Keep 2-4 hypotheses with predictions or falsifiers. Run the smallest observation or change that can eliminate one hypothesis. Failed experiments count only when they rule something out, narrow the fault class, improve the reproducer, or expose a missing observation. Record ruled-out facts and a reassembly path before teardown, refactor, migration, or multi-file edit. Ask only if the next discriminator is user-owned, risky, irreversible, or changes scope, verification, or done criteria.
-
-Guard against defended first theory, newest-symptom bias, false binary, stale plan, green-test tunnel vision, broad edit without falsifier, tool noise as product truth, and implementation-derived tests.
+Before entering a sustained recovery loop, read `references/diagnostics.md` bundled with this skill for the complete protocol and its bias guards.
 
 ## Probe / Discover
 
@@ -90,13 +90,11 @@ Before each material step, verify contract preservation. After each step, compar
 
 ## Acceptance Close
 
-Before saying done, compare original ask, current contract, explicit constraints, done criteria, current evidence, and remaining assumed or user-owned boundaries.
+Before saying done, compare original ask, current contract, explicit constraints, done criteria, current evidence, and remaining assumed or user-owned boundaries. Update `## Verification` in `.socratic/contract.md` with what was actually verified and how.
 
-Tests prove completion only when they directly cover done criteria. Otherwise state what evidence proves, what remains an acceptance judgment, and whether review or another check is required. If verification is unavailable, report partial completion and the missing check; do not claim full completion.
+Tests prove completion only when they directly cover done criteria. If verification is unavailable, report partial completion and the missing check; do not claim full completion. If residual acceptance is user-owned, hand off the specific boundary.
 
-After any brake, drift, diagnostic recovery, refactor, migration, workflow change, side effect, or accumulated deviation, completion requires re-anchored evidence matching the current contract.
-
-If all done criteria are satisfied and no boundary remains, close the lifecycle. If residual acceptance is user-owned, hand off the specific boundary without claiming full completion.
+Before claiming completion or handing off, read `references/acceptance.md` bundled with this skill for the complete closure protocol.
 
 ## Output and Exit
 
