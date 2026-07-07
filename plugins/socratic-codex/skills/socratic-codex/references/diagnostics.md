@@ -4,7 +4,7 @@ Load this when entering a sustained diagnostic loop. Precondition: expected beha
 
 ## Evidence ledger
 
-Keep a compact evidence ledger: expected, observed, exact error/mismatch, changed inputs, last known good state, and observed/inferred/unknown status. Mirror durable entries into `.socratic/contract.md` under `## Delta Log` so recovery state survives compaction.
+Keep a compact evidence ledger: expected, observed, exact error/mismatch, changed inputs, last known good state, and observed/inferred/unknown status. Mirror durable entries into `.socratic/contract.md` under `## Delta Log` so recovery state survives compaction, but keep `## Contract` short and current.
 
 ## Ground truth first
 

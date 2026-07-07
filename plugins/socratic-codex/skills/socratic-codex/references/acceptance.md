@@ -10,7 +10,7 @@ Compare original ask, current contract (`.socratic/contract.md`), explicit const
 
 Tests prove completion only when they directly cover done criteria. Otherwise state what evidence proves, what remains an acceptance judgment, and whether review or another check is required. If verification is unavailable, report partial completion and the missing check; do not claim full completion.
 
-Update `## Verification` in `.socratic/contract.md` with what was actually run and observed: exact commands, test counts, observed outputs. Hooks treat a fresh Verification update or an executed verification command as the behavioral evidence for a completion claim — a claim without either will be sent back once for re-anchoring.
+Update `## Verification` in `.socratic/contract.md` with what was actually run and observed: exact verification commands, test counts, observed outputs, or explicitly missing checks. Hooks treat a fresh Verification update or a conservative verification-command match as the behavioral evidence for a completion claim — a claim without either will be sent back once for re-anchoring.
 
 ## Re-anchored completion
 
