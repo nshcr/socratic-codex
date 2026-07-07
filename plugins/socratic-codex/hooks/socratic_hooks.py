@@ -4,13 +4,14 @@
 State model:
 - Per-session activity ledger in ``$CLAUDE_PLUGIN_DATA/state/<session_id>.json``
   (Codex exports the same variable for compatibility; ``PLUGIN_DATA`` is the
-  Codex-native fallback). Records turn start time, whether a verification-ish
-  Bash command ran this turn, and lifecycle-context injection dedup.
+  Codex-native fallback). Records turn start time, whether a verification
+  command ran this turn, once-per-turn completion blocking, and
+  lifecycle-context injection dedup.
 - Goal contract of record in ``<cwd>/.socratic/contract.md``, maintained by the
   model per the skill instructions and restored by the SessionStart hook after
   compaction or resume.
-- Append-only audit log in ``$CLAUDE_PLUGIN_DATA/audit.jsonl`` recording every
-  hook intervention (never silent pass-throughs).
+- Bounded audit log in ``$CLAUDE_PLUGIN_DATA/audit.jsonl`` recording recent hook
+  interventions (never silent pass-throughs).
 
 All state operations fail silently: a hook must never break the session.
 """
@@ -29,6 +30,9 @@ from typing import Any
 
 CONTRACT_RELPATH = os.path.join(".socratic", "contract.md")
 CONTRACT_MAX_CHARS = 6000
+AUDIT_MAX_BYTES = 256 * 1024
+AUDIT_KEEP_BYTES = 128 * 1024
+STATE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 
 LIFECYCLE_CONTEXT = (
     "Socratic Codex: for sustained work, bind a compact goal contract and "
@@ -98,6 +102,28 @@ SENSITIVE_FILE_RE = re.compile(
 
 FILE_EDIT_TOOLS = frozenset({"Edit", "Write", "NotebookEdit"})
 
+VERIFICATION_COMMANDS = frozenset(
+    {
+        "cargo",
+        "go",
+        "make",
+        "npm",
+        "pnpm",
+        "python",
+        "python3",
+        "pytest",
+        "ruff",
+        "swift",
+        "yarn",
+    }
+)
+
+VERIFICATION_WORD_RE = re.compile(
+    r"(test|check|verify|validate|lint|typecheck|build|vet|fmt|clippy|"
+    r"pytest|unittest|json\.tool|self-test)",
+    re.IGNORECASE,
+)
+
 DONE_RE = re.compile(
     r"\b(done|complete|completed|fixed|implemented|finished|ready|shipped)\b|"
     r"完成|已修复|已实现|搞定|结束",
@@ -143,6 +169,16 @@ def state_path(session_id: str) -> Path:
     return data_dir() / "state" / f"{safe}.json"
 
 
+def cleanup_old_states(now: float | None = None) -> None:
+    cutoff = (time.time() if now is None else now) - STATE_MAX_AGE_SECONDS
+    try:
+        for path in (data_dir() / "state").glob("*.json"):
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+    except OSError:
+        pass
+
+
 def load_state(session_id: str) -> dict[str, Any]:
     if not session_id:
         return {}
@@ -159,7 +195,20 @@ def save_state(session_id: str, state: dict[str, Any]) -> None:
     try:
         path = state_path(session_id)
         path.parent.mkdir(parents=True, exist_ok=True)
+        cleanup_old_states()
         path.write_text(json.dumps(state), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def compact_audit(path: Path) -> None:
+    try:
+        if path.exists() and path.stat().st_size > AUDIT_MAX_BYTES:
+            tail = path.read_bytes()[-AUDIT_KEEP_BYTES:]
+            newline = tail.find(b"\n")
+            if newline != -1:
+                tail = tail[newline + 1 :]
+            path.write_bytes(tail)
     except OSError:
         pass
 
@@ -168,6 +217,7 @@ def audit(event: str, action: str, detail: str = "") -> None:
     try:
         path = data_dir() / "audit.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
+        compact_audit(path)
         entry = {"ts": round(time.time(), 3), "event": event, "action": action}
         if detail:
             entry["detail"] = detail[:200]
@@ -186,6 +236,22 @@ def read_contract(cwd: str) -> str:
         return contract_path(cwd).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
+
+
+def markdown_section(text: str, heading: str) -> str:
+    match = re.search(
+        rf"^#{{1,6}}\s*{re.escape(heading)}\b(.*?)(?=^#{{1,6}}\s|\Z)",
+        text,
+        re.IGNORECASE | re.MULTILINE | re.DOTALL,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def restored_contract_text(text: str) -> str:
+    contract = markdown_section(text, "Contract")
+    if contract:
+        return f"## Contract\n\n{contract}"[:CONTRACT_MAX_CHARS]
+    return text[:CONTRACT_MAX_CHARS]
 
 
 def contract_verification_updated(cwd: str, since_ts: float) -> bool:
@@ -275,6 +341,32 @@ def command_is_risky(command: str) -> bool:
     return False
 
 
+def command_is_verification(command: str) -> bool:
+    """True for commands that are plausibly intended to verify behavior."""
+    segments = SEGMENT_SPLIT_RE.split(command)
+    for segment in segments:
+        segment = segment.strip()
+        if not segment:
+            continue
+        try:
+            tokens = shlex.split(segment, posix=True)
+        except ValueError:
+            continue
+        while tokens and ASSIGNMENT_RE.match(tokens[0]):
+            tokens = tokens[1:]
+        if not tokens:
+            continue
+        cmd = os.path.basename(tokens[0])
+        args = tokens[1:]
+        if cmd not in VERIFICATION_COMMANDS:
+            continue
+        if cmd in {"pytest", "ruff"}:
+            return True
+        if any(VERIFICATION_WORD_RE.search(arg) for arg in args):
+            return True
+    return False
+
+
 # --- Event handlers ---------------------------------------------------------
 
 
@@ -282,7 +374,9 @@ def user_prompt_submit(data: dict[str, Any]) -> None:
     session_id = str(data.get("session_id") or "")
     state = load_state(session_id)
     state["last_prompt_ts"] = time.time()
-    state["bash_since_prompt"] = False
+    state["verification_since_prompt"] = False
+    state["completion_blocked_since_prompt"] = False
+    state.pop("bash_since_prompt", None)
     inject = bool(
         PROMPT_RE.search(str(data.get("prompt", "")))
         and not state.get("lifecycle_injected")
@@ -300,10 +394,10 @@ def pre_tool_use(data: dict[str, Any]) -> None:
     if tool == "Bash":
         session_id = str(data.get("session_id") or "")
         state = load_state(session_id)
-        if not state.get("bash_since_prompt"):
-            state["bash_since_prompt"] = True
-            save_state(session_id, state)
         command = tool_command(data)
+        if command_is_verification(command) and not state.get("verification_since_prompt"):
+            state["verification_since_prompt"] = True
+            save_state(session_id, state)
         if command_is_risky(command):
             audit("PreToolUse", "boundary-gate", command)
             hook_output("PreToolUse", BOUNDARY_CONTEXT)
@@ -329,15 +423,19 @@ def stop(data: dict[str, Any]) -> None:
     state = load_state(session_id)
     last_prompt_ts = state.get("last_prompt_ts")
     if isinstance(last_prompt_ts, (int, float)):
-        # Behavioral evidence: a command ran this turn, or the contract's
+        # Behavioral evidence: a verification command ran this turn, or the contract's
         # Verification section was updated this turn. Word-face claims alone
         # do not count when the ledger is available.
-        evidence = bool(state.get("bash_since_prompt")) or contract_verification_updated(
+        evidence = bool(state.get("verification_since_prompt")) or contract_verification_updated(
             str(data.get("cwd") or ""), float(last_prompt_ts)
         )
     else:
         evidence = bool(EVIDENCE_RE.search(message))
     if not evidence:
+        if state.get("completion_blocked_since_prompt"):
+            return
+        state["completion_blocked_since_prompt"] = True
+        save_state(session_id, state)
         audit("Stop", "block-unverified-completion")
         continuation(ACCEPTANCE_CONTEXT)
 
@@ -351,10 +449,7 @@ def session_start(data: dict[str, Any]) -> None:
     contract = read_contract(str(data.get("cwd") or "")).strip()
     if contract:
         audit("SessionStart", "restore-contract", str(data.get("source") or ""))
-        hook_output(
-            "SessionStart",
-            CONTRACT_RESTORED_CONTEXT + contract[:CONTRACT_MAX_CHARS],
-        )
+        hook_output("SessionStart", CONTRACT_RESTORED_CONTEXT + restored_contract_text(contract))
 
 
 def self_test() -> None:
@@ -375,6 +470,13 @@ def self_test() -> None:
     assert not command_is_risky("git status && npm test")
     assert not command_is_risky("rm file.txt")
     assert not command_is_risky("git commit -m 'reset --hard docs'")
+    assert command_is_verification("npm test")
+    assert command_is_verification("cargo check")
+    assert command_is_verification("python3 -m json.tool hooks.json")
+    assert command_is_verification("python3 plugins/socratic-codex/hooks/socratic_hooks.py --self-test")
+    assert not command_is_verification("python3 scripts/inspect.py")
+    assert not command_is_verification("ls -la")
+    assert not command_is_verification("git status")
     # Patch and file-path boundaries.
     assert RISKY_PATCH_RE.search("*** Delete File: README.md")
     assert RISKY_PATCH_RE.search("*** Update File: .claude/settings.json")
@@ -403,11 +505,53 @@ def self_test() -> None:
             "## Contract\nship feature\n\n## Verification\n", encoding="utf-8"
         )
         assert not contract_verification_updated(tmp, time.time() - 60)
+        restored = restored_contract_text(
+            "## Contract\ncurrent goal\n\n## Delta Log\n" + ("old goal\n" * 4000)
+        )
+        assert "current goal" in restored
+        assert "old goal" not in restored
     # State round-trip.
     os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
-    save_state("s/1", {"bash_since_prompt": True})
-    assert load_state("s/1") == {"bash_since_prompt": True}
+    save_state("s/1", {"verification_since_prompt": True})
+    assert load_state("s/1") == {"verification_since_prompt": True}
     assert load_state("missing") == {}
+    old = data_dir() / "state" / "old.json"
+    old.parent.mkdir(parents=True, exist_ok=True)
+    old.write_text("{}", encoding="utf-8")
+    os.utime(old, (time.time() - STATE_MAX_AGE_SECONDS - 60,) * 2)
+    save_state("fresh", {"ok": True})
+    assert not old.exists()
+    audit_path = data_dir() / "audit.jsonl"
+    audit_path.write_bytes(b'{"old":true}\n' * (AUDIT_MAX_BYTES // 8))
+    audit("Stop", "block-unverified-completion")
+    assert audit_path.stat().st_size < AUDIT_MAX_BYTES
+    # Stop gate: arbitrary Bash is not evidence; repeated block is once per turn.
+    import contextlib
+    import io
+
+    os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
+    user_prompt_submit({"session_id": "turn/1", "prompt": "fix parser"})
+    pre_tool_use({"session_id": "turn/1", "tool_name": "Bash", "tool_input": {"command": "ls -la"}})
+    blocked = io.StringIO()
+    with contextlib.redirect_stdout(blocked):
+        stop({"session_id": "turn/1", "cwd": tmp, "last_assistant_message": "Implemented and complete."})
+    assert '"decision": "block"' in blocked.getvalue()
+    repeated = io.StringIO()
+    with contextlib.redirect_stdout(repeated):
+        stop({"session_id": "turn/1", "cwd": tmp, "last_assistant_message": "Implemented and complete."})
+    assert repeated.getvalue() == ""
+    user_prompt_submit({"session_id": "turn/2", "prompt": "fix parser"})
+    pre_tool_use(
+        {
+            "session_id": "turn/2",
+            "tool_name": "Bash",
+            "tool_input": {"command": "python3 -m json.tool hooks.json"},
+        }
+    )
+    verified = io.StringIO()
+    with contextlib.redirect_stdout(verified):
+        stop({"session_id": "turn/2", "cwd": tmp, "last_assistant_message": "Implemented and complete."})
+    assert verified.getvalue() == ""
 
 
 def main() -> int:
