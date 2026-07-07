@@ -37,7 +37,7 @@ STATE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 LIFECYCLE_CONTEXT = (
     "Socratic Codex: for sustained work, bind a compact goal contract and "
     "persist it to .socratic/contract.md; inspect before asking; ask only "
-    "user-owned uncertainty; use Boundary Gate before scope, risk, "
+    "action-changing user-owned uncertainty; use Boundary Gate before scope, risk, "
     "architecture, side-effect, irreversible, or acceptance changes; do not "
     "claim completion until evidence matches done criteria."
 )

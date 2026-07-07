@@ -5,14 +5,14 @@
     "url": "https://github.com/nshcr"
   },
   "metadata": {
-    "description": "Goal-lifecycle control plugins for coding agents.",
+    "description": "Goal-lifecycle control for coding agents.",
     "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "socratic-codex",
       "source": "./plugins/socratic-codex",
-      "description": "Goal-lifecycle control: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
+      "description": "Goal-lifecycle control for coding agents: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
       "category": "productivity",
       "keywords": [
         "goal-steering",

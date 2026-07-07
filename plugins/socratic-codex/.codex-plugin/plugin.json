@@ -1,7 +1,7 @@
 {
   "name": "socratic-codex",
   "version": "1.3.0",
-  "description": "Goal-lifecycle control for Codex: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
+  "description": "Goal-lifecycle control for coding agents: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
   "author": {
     "name": "Junius Chen"
   },
@@ -18,8 +18,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Socratic Codex",
-    "shortDescription": "Control goal lifecycle drift.",
-    "longDescription": "Socratic Codex protects user-owned intent across discovery, goal binding, planning, execution steering, diagnostic recovery, boundary gates, and acceptance closure. It persists the goal contract to .socratic/contract.md, restores it after compaction or resume, re-anchors on brake or drift signals, asks only action-changing questions, and blocks completion claims until behavioral evidence (verification commands run, or a fresh Verification record in the contract) matches done criteria. Use it for /goal drafting and steering, solution-shaped requests, risky target changes, stuck diagnostics, and acceptance handoff; skip routine deterministic work outside an active lifecycle.",
+    "shortDescription": "Prevent goal drift in long tasks.",
+    "longDescription": "Socratic Codex protects user-owned intent from discovery through acceptance. It persists the goal contract to .socratic/contract.md, restores it after compaction or resume, re-anchors on brake or drift signals, asks only action-changing user-owned questions, and blocks completion claims until behavioral evidence (verification commands run, or a fresh Verification record in the contract) matches done criteria. Use it for /goal drafting and steering, sustained solution-shaped work, risky scope or architecture changes, stuck diagnostics, and acceptance handoff; skip deterministic one-step work unless an active lifecycle is at risk.",
     "developerName": "Junius Chen",
     "category": "Productivity",
     "capabilities": [
