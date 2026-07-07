@@ -1,16 +1,16 @@
 # Diagnostic Recovery — Full Protocol
 
-Load this when entering a sustained diagnostic loop. Precondition: expected behavior is known. If not, bind or repair the contract first unless action is frozen.
+Read for sustained diagnostic loops. Precondition: expected behavior is known. If not, bind or repair the contract first unless action is frozen.
 
-## Evidence ledger
+## Ledger
 
-Keep a compact evidence ledger: expected, observed, exact error/mismatch, changed inputs, last known good state, and observed/inferred/unknown status. Mirror durable entries into `.socratic/contract.md` under `## Delta Log` so recovery state survives compaction, but keep `## Contract` short and current.
+Keep expected, observed, exact mismatch, changed inputs, last known good, and observed/inferred/unknown status. Mirror durable entries into `## Delta Log`; keep `## Contract` short and current.
 
-## Ground truth first
+## Ground truth
 
-If ground truth is missing, create or identify the smallest runnable test, reproducer, assertion, fixture, command, or observable check. Generated tests must derive from the goal contract, original failure, or confirmed expected behavior, not current implementation alone.
+If ground truth is missing, create or identify the smallest runnable test, reproducer, assertion, fixture, command, or observable check. Generated tests must derive from the contract, original failure, or confirmed expected behavior, never current implementation alone.
 
-## Hypothesis discipline
+## Hypotheses
 
 Keep 2-4 hypotheses with predictions or falsifiers. Run the smallest observation or change that can eliminate one hypothesis. Failed experiments count only when they rule something out, narrow the fault class, improve the reproducer, or expose a missing observation. Record ruled-out facts and a reassembly path before teardown, refactor, migration, or multi-file edit. Ask only if the next discriminator is user-owned, risky, irreversible, or changes scope, verification, or done criteria.
 

@@ -1,21 +1,21 @@
 # Acceptance Close — Full Protocol
 
-Load this before claiming completion or handing off acceptance.
+Read before claiming completion or handing off acceptance.
 
-## Compare before claiming
+## Compare
 
-Compare original ask, current contract (`.socratic/contract.md`), explicit constraints, done criteria, current evidence, and remaining assumed or user-owned boundaries. A completion claim that skips this comparison is unsupported by definition.
+Compare original ask, current contract (`.socratic/contract.md`), constraints, done criteria, evidence, and remaining assumed/user-owned boundaries. Skipping this makes completion unsupported.
 
-## Evidence standards
+## Evidence
 
-Tests prove completion only when they directly cover done criteria. Otherwise state what evidence proves, what remains an acceptance judgment, and whether review or another check is required. If verification is unavailable, report partial completion and the missing check; do not claim full completion.
+Tests prove completion only when they directly cover done criteria. Otherwise state what they prove, what remains an acceptance judgment, and what check or review is still needed.
 
-Update `## Verification` in `.socratic/contract.md` with what was actually run and observed: exact verification commands, test counts, observed outputs, or explicitly missing checks. Hooks treat a fresh Verification update or a conservative verification-command match as the behavioral evidence for a completion claim — a claim without either will be sent back once for re-anchoring.
+Update `## Verification` with exact commands, test counts, observed outputs, or explicitly missing checks. Hooks treat a fresh Verification update or conservative verification command as behavioral evidence; without either, an unsupported completion claim is sent back once for re-anchoring.
 
-## Re-anchored completion
+## Re-anchor
 
 After any brake, drift, diagnostic recovery, refactor, migration, workflow change, side effect, or accumulated deviation, completion requires re-anchored evidence matching the current contract, not the pre-deviation plan.
 
-## Close or hand off
+## Close
 
-If all done criteria are satisfied and no boundary remains, close the lifecycle. If residual acceptance is user-owned (business meaning, visual quality, external side effects, irreversible steps), hand off the specific boundary explicitly without claiming full completion.
+If all done criteria are satisfied and no boundary remains, close. If residual acceptance is user-owned (business meaning, visual quality, external side effects, irreversible steps), hand off that boundary without claiming full completion.
