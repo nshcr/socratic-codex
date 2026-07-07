@@ -54,22 +54,22 @@ Claude Code can also invoke the skill implicitly based on its description. Check
 claude plugin list
 ```
 
-The bundled hooks load automatically from the plugin's `hooks/hooks.json` when the plugin is enabled. Hook commands run with your user permissions, so review `hooks/socratic_hooks.py` before enabling if that matters in your environment.
+The shared hooks load from `hooks/hooks.json`; the Claude-only semantic acceptance gate loads from `hooks/claude.json`. Hook commands run with your user permissions, so review `hooks/socratic_hooks.py` before enabling if that matters in your environment.
 
-**中文摘要：** Claude Code 用户用 `claude plugin marketplace add nshcr/socratic-codex` 添加 marketplace，再用 `claude plugin install socratic-codex@socratic-codex` 安装。会话中可用 `/socratic-codex` 或示例提示显式调用，Claude Code 也会根据 skill 描述隐式调用；安装后用 `claude plugin list` 验证。插件启用后，打包的 hooks 会从 `hooks/hooks.json` 自动加载；hook 命令以你的用户权限运行，如果这会影响你的环境，启用前先 review `hooks/socratic_hooks.py`。
+**中文摘要：** Claude Code 用户用 `claude plugin marketplace add nshcr/socratic-codex` 添加 marketplace，再用 `claude plugin install socratic-codex@socratic-codex` 安装。会话中可用 `/socratic-codex` 或示例提示显式调用，Claude Code 也会根据 skill 描述隐式调用；安装后用 `claude plugin list` 验证。共享 hooks 来自 `hooks/hooks.json`，Claude 专属的语义验收 gate 来自 `hooks/claude.json`；hook 命令以你的用户权限运行，如果这会影响你的环境，启用前先 review `hooks/socratic_hooks.py`。
 
 ## What it changes
 
-Socratic Codex changes how Codex handles work that has more than one obvious step.
+Socratic Codex changes how the agent handles work that has more than one obvious step.
 
 - Turns a loose request into a compact goal contract.
-- Separates facts Codex can inspect from choices only the user can make.
+- Separates facts the agent can inspect from choices only the user can make.
 - Prevents plans, generated tests, clean logs, or tool success from becoming false proof.
 - Stops before risky scope, architecture, irreversible, or acceptance-boundary changes.
 - Recovers from drift by re-reading the ask, the evidence, and the current workspace state.
 - Closes with what was verified, what remains assumed, and what still needs acceptance.
 
-**中文摘要：** 它会改变 Codex 处理多步骤任务的方式：把模糊请求压缩成目标契约；区分 Codex 能自己核查的事实和只能由用户做出的选择；避免把计划、生成的测试、干净日志或命令成功误当成完成证明；在涉及 scope、architecture、不可逆操作或 acceptance boundary 的风险变化前暂停；发生漂移时重新对齐原始请求、证据和当前工作区；最终说明哪些已验证、哪些仍是假设、哪些需要用户验收。
+**中文摘要：** 它会改变 agent 处理多步骤任务的方式：把模糊请求压缩成目标契约；区分 agent 能自己核查的事实和只能由用户做出的选择；避免把计划、生成的测试、干净日志或命令成功误当成完成证明；在涉及 scope、architecture、不可逆操作或 acceptance boundary 的风险变化前暂停；发生漂移时重新对齐原始请求、证据和当前工作区；最终说明哪些已验证、哪些仍是假设、哪些需要用户验收。
 
 ## Hook-backed guardrails
 
@@ -90,9 +90,9 @@ These hooks do not replace the skill's judgment and are not a complete security 
 
 Use it when the cost of a confident wrong answer is higher than the cost of one well-placed checkpoint.
 
-It is useful for advanced Codex sessions where the model is capable enough to do real work, but still needs guardrails around goal drift, premature completion claims, hidden assumption changes, and diagnostic loops that stop producing new evidence.
+It is useful for advanced coding-agent sessions where the model is capable enough to do real work, but still needs guardrails around goal drift, premature completion claims, hidden assumption changes, and diagnostic loops that stop producing new evidence.
 
-**中文摘要：** 当“自信但错误地推进”比“在关键处停下来确认一次”代价更高时，就该用它。它尤其适合高级 Codex 会话：模型已经能做复杂工作，但仍需要防止目标漂移、过早声称完成、悄悄改变假设，以及陷入不再产生新证据的诊断循环。
+**中文摘要：** 当“自信但错误地推进”比“在关键处停下来确认一次”代价更高时，就该用它。它尤其适合高级 coding-agent 会话：模型已经能做复杂工作，但仍需要防止目标漂移、过早声称完成、悄悄改变假设，以及陷入不再产生新证据的诊断循环。
 
 ## When to use it
 
@@ -115,7 +115,7 @@ Skip it for:
 
 ## What happens after activation
 
-Codex should become less eager to "just continue" when continuation would cross a user-owned boundary.
+The agent should become less eager to "just continue" when continuation would cross a user-owned boundary.
 
 You should see:
 
@@ -126,7 +126,7 @@ You should see:
 - Clear re-anchoring after "this is wrong", "go back", "stop", or drift signals.
 - Completion claims tied to evidence instead of confidence.
 
-**中文摘要：** 激活后，Codex 在继续会跨越用户拥有的边界时，会更少急着“直接继续”。你应该看到更紧凑的目标切片、更少的空泛追问、更多先查文件/命令/测试/日志/文档的行为、只在答案会改变下一步时做短暂停顿、在收到“错了”“回到前面”“停止”等信号后重新对齐，以及用证据而不是信心来声明完成。
+**中文摘要：** 激活后，agent 在继续会跨越用户拥有的边界时，会更少急着“直接继续”。你应该看到更紧凑的目标切片、更少的空泛追问、更多先查文件/命令/测试/日志/文档的行为、只在答案会改变下一步时做短暂停顿、在收到“错了”“回到前面”“停止”等信号后重新对齐，以及用证据而不是信心来声明完成。
 
 ## Scope and status
 
@@ -134,19 +134,19 @@ Socratic Codex is experimental and intentionally narrow.
 
 It is written for advanced models, usually GPT-5.5-class, Claude Sonnet 4.5-class, or stronger, where the model can already inspect evidence, maintain a compact goal contract, and choose when not to ask. Weaker models may follow the words while missing the judgment the plugin relies on.
 
-This repository ships one plugin for two hosts: Codex (via `.codex-plugin/` and `.agents/plugins/marketplace.json`) and Claude Code (via `.claude-plugin/`). Both hosts load the same `SKILL.md` and the same hooks. The behavior still depends on host-specific skill loading, implicit invocation, goal-oriented collaboration, and how each host exposes tools, workspace state, approvals, and acceptance handoff. Porting the text is easy; preserving the behavior is the hard part, so treat non-Codex behavior as less validated.
+This repository ships one plugin for two hosts: Codex (via `.codex-plugin/` and `.agents/plugins/marketplace.json`) and Claude Code (via `.claude-plugin/`). Both hosts load the same `SKILL.md` and shared `hooks/hooks.json`; Claude Code also loads `hooks/claude.json`. The behavior still depends on host-specific skill loading, implicit invocation, goal-oriented collaboration, and how each host exposes tools, workspace state, approvals, and acceptance handoff. Porting the text is easy; preserving the behavior is the hard part, so treat non-Codex behavior as less validated.
 
 There is no benchmark yet. The useful measurement is not whether the plugin sounds more careful, but whether it reduces real drift, bad checkpoints, unsupported completion claims, and wasted diagnostic loops in long-running work. That needs task traces and review criteria that are not ready yet.
 
-**中文摘要：** 这个插件仍处于实验阶段，并且刻意保持窄范围：它主要面向 GPT-5.5-class、Claude Sonnet 4.5-class 或更强的高级模型，因为这些模型通常已经能检查证据、维护紧凑的目标契约，并判断什么时候不该提问；较弱模型可能只学到字面规则，却缺少协议依赖的判断力。仓库现在为 Codex 和 Claude Code 两个 host 发布同一个 plugin：两端共用 `SKILL.md` 和 hooks，但行为仍依赖各 host 的 skill 加载、implicit invocation、目标导向协作、工具、工作区状态、审批和验收交接等运行环境。移植文本很容易，保留行为很难，所以非 Codex 行为应视为验证更少。目前还没有 benchmark，真正要评估的是它能否在长任务中减少真实漂移、错误 checkpoint、无支撑的完成声明和浪费性的诊断循环；这还需要尚未准备好的任务 traces 与 review criteria。
+**中文摘要：** 这个插件仍处于实验阶段，并且刻意保持窄范围：它主要面向 GPT-5.5-class、Claude Sonnet 4.5-class 或更强的高级模型，因为这些模型通常已经能检查证据、维护紧凑的目标契约，并判断什么时候不该提问；较弱模型可能只学到字面规则，却缺少协议依赖的判断力。仓库现在为 Codex 和 Claude Code 两个 host 发布同一个 plugin：两端共用 `SKILL.md` 和共享的 `hooks/hooks.json`，Claude Code 额外加载 `hooks/claude.json`；行为仍依赖各 host 的 skill 加载、implicit invocation、目标导向协作、工具、工作区状态、审批和验收交接等运行环境。移植文本很容易，保留行为很难，所以非 Codex 行为应视为验证更少。目前还没有 benchmark，真正要评估的是它能否在长任务中减少真实漂移、错误 checkpoint、无支撑的完成声明和浪费性的诊断循环；这还需要尚未准备好的任务 traces 与 review criteria。
 
 ## Why "Socratic"
 
 "Socratic" points to the discipline of using questions to expose assumptions, clarify intent, and test whether an answer is actually justified.
 
-In this plugin, that does not mean Codex should keep interrogating the user. It means Codex should question its own assumptions first, inspect available evidence, and ask the user only when the answer would change the next action.
+In this plugin, that does not mean the agent should keep interrogating the user. It means the agent should question its own assumptions first, inspect available evidence, and ask the user only when the answer would change the next action.
 
-**中文摘要：** “Socratic” 指的是用问题暴露假设、澄清意图、检验答案是否真的站得住。放在这个插件里，它不是让 Codex 不停追问用户，而是要求 Codex 先质疑自己的假设、先检查可获得的证据，只在用户的答案会改变下一步行动时才提问。
+**中文摘要：** “Socratic” 指的是用问题暴露假设、澄清意图、检验答案是否真的站得住。放在这个插件里，它不是让 agent 不停追问用户，而是要求 agent 先质疑自己的假设、先检查可获得的证据，只在用户的答案会改变下一步行动时才提问。
 
 ## Local checkout install
 
@@ -189,6 +189,6 @@ plugins/socratic-codex/
   skills/socratic-codex/agents/openai.yaml
 ```
 
-The source of truth is `skills/socratic-codex/SKILL.md`, with the full Diagnostic Recovery and Acceptance Close protocols split into `references/` so simple invocations pay less context. Hooks in `hooks/` are lifecycle guardrails aligned to that skill, not a second policy layer. Both hosts share `hooks/hooks.json`: its commands reference `${CLAUDE_PLUGIN_ROOT}`, which Claude Code sets natively and Codex sets for compatibility. `hooks/claude.json` is loaded only through the Claude manifest. Runtime state (session ledger, bounded audit log) lives in the plugin data directory; the active goal contract lives in the workspace at `.socratic/contract.md` and is meant for sustained work, not routine one-step tasks. Codex marketplace discovery starts at `.agents/plugins/marketplace.json`; Claude Code discovery starts at `.claude-plugin/marketplace.json`.
+The source of truth is `skills/socratic-codex/SKILL.md`, with the full Diagnostic Recovery and Acceptance Close protocols split into `references/` so simple invocations pay less context. Hooks in `hooks/` are lifecycle guardrails aligned to that skill, not a second policy layer. Both hosts share `hooks/hooks.json`: its commands reference `${CLAUDE_PLUGIN_ROOT}`, which Claude Code sets natively and Codex sets for compatibility. Claude Code also loads `hooks/claude.json` through its manifest. Runtime state (session ledger, bounded audit log) lives in the plugin data directory; the active goal contract lives in the workspace at `.socratic/contract.md` and is meant for sustained work, not deterministic one-step tasks. Codex marketplace discovery starts at `.agents/plugins/marketplace.json`; Claude Code discovery starts at `.claude-plugin/marketplace.json`.
 
-**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准，Diagnostic Recovery 和 Acceptance Close 的完整协议拆到 `references/` 按需加载，以降低简单调用的上下文成本。`hooks/` 是与 skill 对齐的 lifecycle guardrails，不是第二套 policy 层。两个 host 共用 `hooks/hooks.json`，其中命令引用 `${CLAUDE_PLUGIN_ROOT}`，Claude Code 原生设置该变量，Codex 为兼容也会设置；`hooks/claude.json` 只通过 Claude manifest 加载。运行时状态包括 session ledger 和有上限的 audit log，存在插件数据目录；当前目标契约存在工作区 `.socratic/contract.md`，主要用于长任务，不用于常规单步任务。Codex 的 marketplace 入口是 `.agents/plugins/marketplace.json`，Claude Code 的入口是 `.claude-plugin/marketplace.json`。
+**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准，Diagnostic Recovery 和 Acceptance Close 的完整协议拆到 `references/` 按需加载，以降低简单调用的上下文成本。`hooks/` 是与 skill 对齐的 lifecycle guardrails，不是第二套 policy 层。两个 host 共用 `hooks/hooks.json`，其中命令引用 `${CLAUDE_PLUGIN_ROOT}`，Claude Code 原生设置该变量，Codex 为兼容也会设置；Claude Code 还会通过自己的 manifest 额外加载 `hooks/claude.json`。运行时状态包括 session ledger 和有上限的 audit log，存在插件数据目录；当前目标契约存在工作区 `.socratic/contract.md`，主要用于长任务，不用于确定性单步任务。Codex 的 marketplace 入口是 `.agents/plugins/marketplace.json`，Claude Code 的入口是 `.claude-plugin/marketplace.json`。
