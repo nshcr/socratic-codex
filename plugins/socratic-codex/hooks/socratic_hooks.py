@@ -5,8 +5,9 @@ State model:
 - Per-session activity ledger in ``$CLAUDE_PLUGIN_DATA/state/<session_id>.json``
   (Codex exports the same variable for compatibility; ``PLUGIN_DATA`` is the
   Codex-native fallback). Records turn start time, whether a verification
-  command ran this turn, once-per-turn completion blocking, and
-  lifecycle-context injection dedup, including subagent stop dedup by agent id.
+  command ran this turn, whether a Socratic lifecycle is active, once-per-turn
+  completion blocking, lifecycle-context injection dedup, and subagent stop
+  dedup by agent id.
 - Goal contract of record in ``<cwd>/.socratic/contract.md``, maintained by the
   model per the skill instructions and restored by the SessionStart hook after
   compaction or resume.
@@ -80,10 +81,20 @@ SUBAGENT_ACCEPTANCE_CONTEXT = (
 )
 
 PROMPT_RE = re.compile(
-    r"(\$socratic-codex|/socratic-codex|/goal\b|"
+    r"(\$socratic-codex|/socratic-codex|@socratic-codex|"
+    r"plugin://socratic-codex|/goal\b|"
     r"\b(goal|goals|acceptance|handoff|drift|drifting|stuck|rollback|"
     r"roll back|irreversible|migrate|migration|teardown|risky)\b|"
-    r"目标|验收|交接|漂移|卡住|回滚|不可逆|迁移|拆除|风险|错了|停止|回到)",
+    r"目标|验收|交接|漂移|卡住|回滚|不可逆|迁移|拆除|风险|错了|"
+    r"停止(提问|追问|问我|问))",
+    re.IGNORECASE,
+)
+
+CONTINUE_RE = re.compile(r"\b(continue|resume|proceed|carry on)\b|继续|接着|收尾", re.IGNORECASE)
+
+DISABLE_RE = re.compile(
+    r"\b(no|skip|disable|stop using)[ -]socratic-codex\b|"
+    r"不需要(使用)?\s*socratic-codex|不要(使用)?\s*socratic-codex|停用\s*socratic-codex",
     re.IGNORECASE,
 )
 
@@ -100,21 +111,18 @@ ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 SEGMENT_SPLIT_RE = re.compile(r"&&|\|\||;|\||\n")
 SUBSTITUTION_RE = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 
-RISKY_PATCH_RE = re.compile(
-    r"(\*\*\* Delete File:|\.codex-plugin/plugin\.json|"
-    r"\.claude-plugin/plugin\.json|hooks/hooks\.json|"
-    r"requirements\.toml|config\.toml|\.claude/settings(\.local)?\.json)",
-    re.IGNORECASE,
-)
-
-SENSITIVE_FILE_RE = re.compile(
-    r"(\.codex-plugin/plugin\.json|\.claude-plugin/plugin\.json|"
-    r"hooks/hooks\.json|requirements\.toml|\.codex/config\.toml|"
-    r"\.claude/settings(\.local)?\.json|\.mcp\.json)",
-    re.IGNORECASE,
-)
-
 FILE_EDIT_TOOLS = frozenset({"Edit", "Write", "NotebookEdit"})
+
+SENSITIVE_PATH_SUFFIXES = (
+    ".codex-plugin/plugin.json",
+    ".claude-plugin/plugin.json",
+    "hooks/hooks.json",
+    "requirements.toml",
+    ".codex/config.toml",
+    ".claude/settings.json",
+    ".claude/settings.local.json",
+    ".mcp.json",
+)
 
 VERIFICATION_COMMANDS = frozenset(
     {
@@ -149,6 +157,13 @@ EVIDENCE_RE = re.compile(
     r"\b(test|tests|tested|verified|validation|validated|check|checked|"
     r"evidence|partial|missing|unable|not run|not verified)\b|"
     r"测试|验证|校验|证据|未运行|无法|缺少|部分",
+    re.IGNORECASE,
+)
+
+UNVERIFIED_BOUNDARY_RE = re.compile(
+    r"\b(partial|missing|unable|not run|not verified|unverified|must verify|"
+    r"needs? verification|remains? unverified)\b|"
+    r"未运行|无法|缺少|部分|未验证|仍需验证",
     re.IGNORECASE,
 )
 
@@ -268,6 +283,10 @@ def restored_contract_text(text: str) -> str:
     return text[:CONTRACT_MAX_CHARS]
 
 
+def lifecycle_active(state: dict[str, Any]) -> bool:
+    return bool(state.get("lifecycle_session_active") or state.get("lifecycle_active_since_prompt"))
+
+
 def contract_verification_updated(cwd: str, since_ts: float) -> bool:
     """True when contract.md was touched this turn and has verification content."""
     path = contract_path(cwd)
@@ -306,6 +325,28 @@ def tool_file_path(data: dict[str, Any]) -> str:
     return ""
 
 
+def normalized_path(value: str) -> str:
+    return value.replace("\\", "/").strip()
+
+
+def path_is_sensitive(value: str) -> bool:
+    path = normalized_path(value)
+    if not path:
+        return False
+    return any(path == suffix or path.endswith(f"/{suffix}") for suffix in SENSITIVE_PATH_SUFFIXES)
+
+
+def patch_crosses_boundary(patch: str) -> bool:
+    for line in patch.splitlines():
+        if line.startswith("*** Delete File: "):
+            return True
+        if line.startswith(("*** Add File: ", "*** Update File: ")):
+            _, path = line.split(": ", 1)
+            if path_is_sensitive(path):
+                return True
+    return False
+
+
 def risky_tokens(tokens: list[str]) -> bool:
     while tokens and ASSIGNMENT_RE.match(tokens[0]):
         tokens = tokens[1:]
@@ -318,6 +359,8 @@ def risky_tokens(tokens: list[str]) -> bool:
     if cmd == "git":
         sub = args[0] if args else ""
         if sub == "push":
+            if "--dry-run" in args or "-n" in args:
+                return False
             return True
         if sub == "reset" and "--hard" in args:
             return True
@@ -387,13 +430,22 @@ def command_is_verification(command: str) -> bool:
 def user_prompt_submit(data: dict[str, Any]) -> None:
     session_id = str(data.get("session_id") or "")
     state = load_state(session_id)
+    prompt = str(data.get("prompt", ""))
+    lifecycle_prompt = bool(PROMPT_RE.search(prompt))
+    disabled = bool(DISABLE_RE.search(prompt))
+    restored = bool(state.get("lifecycle_restored_from_contract"))
+    session_active = bool(state.get("lifecycle_session_active"))
+    active = False if disabled else lifecycle_prompt or (session_active and (not restored or bool(CONTINUE_RE.search(prompt))))
     state["last_prompt_ts"] = time.time()
     state["verification_since_prompt"] = False
     state["completion_blocked_since_prompt"] = False
+    state["lifecycle_active_since_prompt"] = active
+    state["lifecycle_session_active"] = active
+    if disabled or lifecycle_prompt or CONTINUE_RE.search(prompt):
+        state["lifecycle_restored_from_contract"] = False
     state.pop("bash_since_prompt", None)
     inject = bool(
-        PROMPT_RE.search(str(data.get("prompt", "")))
-        and not state.get("lifecycle_injected")
+        lifecycle_prompt and not state.get("lifecycle_injected")
     )
     if inject:
         state["lifecycle_injected"] = True
@@ -417,12 +469,12 @@ def pre_tool_use(data: dict[str, Any]) -> None:
             hook_output("PreToolUse", BOUNDARY_CONTEXT)
     elif tool == "apply_patch":
         command = tool_command(data)
-        if RISKY_PATCH_RE.search(command):
+        if patch_crosses_boundary(command):
             audit("PreToolUse", "boundary-gate", "apply_patch")
             hook_output("PreToolUse", BOUNDARY_CONTEXT)
     elif tool in FILE_EDIT_TOOLS:
         file_path = tool_file_path(data)
-        if SENSITIVE_FILE_RE.search(file_path):
+        if path_is_sensitive(file_path):
             audit("PreToolUse", "boundary-gate", file_path)
             hook_output("PreToolUse", BOUNDARY_CONTEXT)
 
@@ -435,13 +487,18 @@ def stop(data: dict[str, Any]) -> None:
         return
     session_id = str(data.get("session_id") or "")
     state = load_state(session_id)
+    cwd = str(data.get("cwd") or "")
+    if not lifecycle_active(state):
+        return
     last_prompt_ts = state.get("last_prompt_ts")
     if isinstance(last_prompt_ts, (int, float)):
         # Behavioral evidence: a verification command ran this turn, or the contract's
         # Verification section was updated this turn. Word-face claims alone
         # do not count when the ledger is available.
-        evidence = bool(state.get("verification_since_prompt")) or contract_verification_updated(
-            str(data.get("cwd") or ""), float(last_prompt_ts)
+        evidence = (
+            bool(state.get("verification_since_prompt"))
+            or contract_verification_updated(cwd, float(last_prompt_ts))
+            or bool(UNVERIFIED_BOUNDARY_RE.search(message))
         )
     else:
         evidence = bool(EVIDENCE_RE.search(message))
@@ -455,10 +512,21 @@ def stop(data: dict[str, Any]) -> None:
 
 
 def subagent_start(data: dict[str, Any]) -> None:
+    session_id = str(data.get("session_id") or "")
+    state = load_state(session_id)
+    if not lifecycle_active(state):
+        return
     contract = read_contract(str(data.get("cwd") or "")).strip()
     if not contract:
         return
     agent = str(data.get("agent_type") or "subagent")
+    agent_id = str(data.get("agent_id") or agent)
+    active = state.get("active_subagents")
+    if not isinstance(active, list):
+        active = []
+    active.append(agent_id)
+    state["active_subagents"] = active[-50:]
+    save_state(session_id, state)
     audit("SubagentStart", "inject-contract", agent)
     hook_output("SubagentStart", SUBAGENT_CONTEXT + restored_contract_text(contract))
 
@@ -472,6 +540,10 @@ def subagent_stop(data: dict[str, Any]) -> None:
     session_id = str(data.get("session_id") or "")
     agent_id = str(data.get("agent_id") or data.get("agent_type") or "subagent")
     state = load_state(session_id)
+    active = state.get("active_subagents")
+    agent_active = isinstance(active, list) and agent_id in active
+    if not lifecycle_active(state) and not agent_active:
+        return
     blocked = state.get("subagent_completion_blocked")
     if not isinstance(blocked, list):
         blocked = []
@@ -492,6 +564,9 @@ def session_start(data: dict[str, Any]) -> None:
         save_state(session_id, state)
     contract = read_contract(str(data.get("cwd") or "")).strip()
     if contract:
+        state["lifecycle_session_active"] = True
+        state["lifecycle_restored_from_contract"] = True
+        save_state(session_id, state)
         audit("SessionStart", "restore-contract", str(data.get("source") or ""))
         hook_output("SessionStart", CONTRACT_RESTORED_CONTEXT + restored_contract_text(contract))
 
@@ -504,11 +579,17 @@ def self_test() -> None:
     # Prompt gating: strong lifecycle signals in, generic coding verbs out.
     assert PROMPT_RE.search("$socratic-codex bind this")
     assert PROMPT_RE.search("/socratic-codex")
+    assert PROMPT_RE.search("@socratic-codex")
+    assert PROMPT_RE.search("plugin://socratic-codex@socratic-codex")
     assert PROMPT_RE.search("帮我做验收")
     assert PROMPT_RE.search("rollback the migration")
     assert PROMPT_RE.search("这个方向漂移了，回到原始需求")
+    assert PROMPT_RE.search("停止问我")
     assert not PROMPT_RE.search("please implement this function")
     assert not PROMPT_RE.search("fix the bug in parser.py")
+    assert not PROMPT_RE.search("停止这个后台服务")
+    assert DISABLE_RE.search("不需要使用 socratic-codex")
+    assert DISABLE_RE.search("no-socratic-codex")
     # Structured risky-command parsing.
     assert command_is_risky("git reset --hard HEAD")
     assert command_is_risky("FOO=1 git push origin main")
@@ -516,6 +597,7 @@ def self_test() -> None:
     assert command_is_risky("echo $(rm -rf /tmp/x)")
     assert command_is_risky("terraform destroy -auto-approve")
     assert not command_is_risky("git status && npm test")
+    assert not command_is_risky("git push --dry-run origin main")
     assert not command_is_risky("rm file.txt")
     assert not command_is_risky("git commit -m 'reset --hard docs'")
     assert command_is_verification("npm test")
@@ -526,17 +608,20 @@ def self_test() -> None:
     assert not command_is_verification("ls -la")
     assert not command_is_verification("git status")
     # Patch and file-path boundaries.
-    assert RISKY_PATCH_RE.search("*** Delete File: README.md")
-    assert RISKY_PATCH_RE.search("*** Update File: .claude/settings.json")
+    assert patch_crosses_boundary("*** Delete File: README.md")
+    assert patch_crosses_boundary("*** Update File: .claude/settings.json")
     assert tool_command({"tool_input": {"command": "git push"}}) == "git push"
-    assert RISKY_PATCH_RE.search(tool_command({"tool_input": {"patch": "*** Delete File: README.md"}}))
+    assert patch_crosses_boundary(tool_command({"tool_input": {"patch": "*** Delete File: README.md"}}))
+    assert not patch_crosses_boundary("*** Update File: README.md\n+ Mention config.toml in docs\n")
     assert tool_file_path({"tool_input": {"file_path": "/repo/.claude/settings.json"}}) == "/repo/.claude/settings.json"
-    assert SENSITIVE_FILE_RE.search("/repo/.claude-plugin/plugin.json")
-    assert SENSITIVE_FILE_RE.search("/repo/.claude/settings.local.json")
-    assert not SENSITIVE_FILE_RE.search("/repo/src/main.py")
+    assert path_is_sensitive("/repo/.claude-plugin/plugin.json")
+    assert path_is_sensitive("/repo/.claude/settings.local.json")
+    assert not path_is_sensitive("/repo/src/main.py")
+    assert not path_is_sensitive("/repo/docs/hooks/hooks.json.md")
     # Completion / evidence word-face fallback.
     assert DONE_RE.search("Implemented the fix.")
     assert EVIDENCE_RE.search("Tests not run.")
+    assert UNVERIFIED_BOUNDARY_RE.search("Tests not run; parent must verify.")
     # Subagent lifecycle: inject contract on start and block unsupported final claims once.
     subagent_start_without_contract = io.StringIO()
     with contextlib.redirect_stdout(subagent_start_without_contract):
@@ -561,6 +646,12 @@ def self_test() -> None:
         )
         assert "current goal" in restored
         assert "old goal" not in restored
+        stale_started = io.StringIO()
+        with contextlib.redirect_stdout(stale_started):
+            subagent_start({"session_id": "sub/1", "cwd": tmp, "agent_type": "Explore"})
+        assert stale_started.getvalue() == ""
+        os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
+        save_state("sub/1", {"lifecycle_session_active": True})
         started = io.StringIO()
         with contextlib.redirect_stdout(started):
             subagent_start({"session_id": "sub/1", "cwd": tmp, "agent_type": "Explore"})
@@ -581,31 +672,81 @@ def self_test() -> None:
     audit_path.write_bytes(b'{"old":true}\n' * (AUDIT_MAX_BYTES // 8))
     audit("Stop", "block-unverified-completion")
     assert audit_path.stat().st_size < AUDIT_MAX_BYTES
-    # Stop gate: arbitrary Bash is not evidence; repeated block is once per turn.
+    # Stop gate: ordinary turns skip; active lifecycle turns require evidence once.
     os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
-    user_prompt_submit({"session_id": "turn/1", "prompt": "fix parser"})
-    pre_tool_use({"session_id": "turn/1", "tool_name": "Bash", "tool_input": {"command": "ls -la"}})
-    blocked = io.StringIO()
-    with contextlib.redirect_stdout(blocked):
-        stop({"session_id": "turn/1", "cwd": tmp, "last_assistant_message": "Implemented and complete."})
-    assert '"decision": "block"' in blocked.getvalue()
-    repeated = io.StringIO()
-    with contextlib.redirect_stdout(repeated):
-        stop({"session_id": "turn/1", "cwd": tmp, "last_assistant_message": "Implemented and complete."})
-    assert repeated.getvalue() == ""
-    user_prompt_submit({"session_id": "turn/2", "prompt": "fix parser"})
-    pre_tool_use(
-        {
-            "session_id": "turn/2",
-            "tool_name": "Bash",
-            "tool_input": {"command": "python3 -m json.tool hooks.json"},
-        }
-    )
-    verified = io.StringIO()
-    with contextlib.redirect_stdout(verified):
-        stop({"session_id": "turn/2", "cwd": tmp, "last_assistant_message": "Implemented and complete."})
-    assert verified.getvalue() == ""
+    with _tempfile.TemporaryDirectory() as stop_tmp:
+        user_prompt_submit({"session_id": "turn/1", "prompt": "fix parser", "cwd": stop_tmp})
+        pre_tool_use({"session_id": "turn/1", "tool_name": "Bash", "tool_input": {"command": "ls -la"}})
+        skipped = io.StringIO()
+        with contextlib.redirect_stdout(skipped):
+            stop({"session_id": "turn/1", "cwd": stop_tmp, "last_assistant_message": "Implemented and complete."})
+        assert skipped.getvalue() == ""
+        with contextlib.redirect_stdout(io.StringIO()):
+            user_prompt_submit({"session_id": "turn/2", "prompt": "$socratic-codex fix parser", "cwd": stop_tmp})
+        pre_tool_use({"session_id": "turn/2", "tool_name": "Bash", "tool_input": {"command": "ls -la"}})
+        blocked = io.StringIO()
+        with contextlib.redirect_stdout(blocked):
+            stop({"session_id": "turn/2", "cwd": stop_tmp, "last_assistant_message": "Implemented and complete."})
+        assert '"decision": "block"' in blocked.getvalue()
+        repeated = io.StringIO()
+        with contextlib.redirect_stdout(repeated):
+            stop({"session_id": "turn/2", "cwd": stop_tmp, "last_assistant_message": "Implemented and complete."})
+        assert repeated.getvalue() == ""
+        with contextlib.redirect_stdout(io.StringIO()):
+            user_prompt_submit({"session_id": "turn/2b", "prompt": "$socratic-codex fix parser", "cwd": stop_tmp})
+        gap = io.StringIO()
+        with contextlib.redirect_stdout(gap):
+            stop({"session_id": "turn/2b", "cwd": stop_tmp, "last_assistant_message": "Implemented. Tests not run."})
+        assert gap.getvalue() == ""
+        with contextlib.redirect_stdout(io.StringIO()):
+            user_prompt_submit({"session_id": "turn/3", "prompt": "$socratic-codex fix parser", "cwd": stop_tmp})
+        pre_tool_use(
+            {
+                "session_id": "turn/3",
+                "tool_name": "Bash",
+                "tool_input": {"command": "python3 -m json.tool hooks.json"},
+            }
+        )
+        verified = io.StringIO()
+        with contextlib.redirect_stdout(verified):
+            stop({"session_id": "turn/3", "cwd": stop_tmp, "last_assistant_message": "Implemented and complete."})
+        assert verified.getvalue() == ""
+        (Path(stop_tmp) / ".socratic").mkdir()
+        (Path(stop_tmp) / ".socratic" / "contract.md").write_text(
+            "## Contract\nfinish goal\n\n## Verification\n", encoding="utf-8"
+        )
+        user_prompt_submit({"session_id": "turn/4", "prompt": "fix parser", "cwd": stop_tmp})
+        stale_contract = io.StringIO()
+        with contextlib.redirect_stdout(stale_contract):
+            stop({"session_id": "turn/4", "cwd": stop_tmp, "last_assistant_message": "Finished."})
+        assert stale_contract.getvalue() == ""
+        with contextlib.redirect_stdout(io.StringIO()):
+            session_start({"session_id": "turn/5", "cwd": stop_tmp, "source": "resume"})
+        user_prompt_submit({"session_id": "turn/5", "prompt": "fix parser", "cwd": stop_tmp})
+        restored_but_new_task = io.StringIO()
+        with contextlib.redirect_stdout(restored_but_new_task):
+            stop({"session_id": "turn/5", "cwd": stop_tmp, "last_assistant_message": "Finished."})
+        assert restored_but_new_task.getvalue() == ""
+        with contextlib.redirect_stdout(io.StringIO()):
+            session_start({"session_id": "turn/6", "cwd": stop_tmp, "source": "resume"})
+        user_prompt_submit({"session_id": "turn/6", "prompt": "continue", "cwd": stop_tmp})
+        contract_blocked = io.StringIO()
+        with contextlib.redirect_stdout(contract_blocked):
+            stop({"session_id": "turn/6", "cwd": stop_tmp, "last_assistant_message": "Finished."})
+        assert '"decision": "block"' in contract_blocked.getvalue()
     os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
+    subagent_inactive = io.StringIO()
+    with contextlib.redirect_stdout(subagent_inactive):
+        subagent_stop(
+            {
+                "session_id": "turn/3",
+                "agent_id": "agent-0",
+                "agent_type": "Explore",
+                "last_assistant_message": "Implemented and complete.",
+            }
+        )
+    assert subagent_inactive.getvalue() == ""
+    save_state("turn/3", {"lifecycle_session_active": True})
     subagent_blocked = io.StringIO()
     with contextlib.redirect_stdout(subagent_blocked):
         subagent_stop(
@@ -639,7 +780,7 @@ def self_test() -> None:
             }
         )
     assert subagent_with_evidence.getvalue() == ""
-    save_state("turn/4", {"subagent_completion_blocked": "bad"})
+    save_state("turn/4", {"subagent_completion_blocked": "bad", "lifecycle_session_active": True})
     subagent_corrupt_state = io.StringIO()
     with contextlib.redirect_stdout(subagent_corrupt_state):
         subagent_stop(
