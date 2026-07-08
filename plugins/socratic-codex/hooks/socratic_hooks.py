@@ -6,7 +6,7 @@ State model:
   (Codex exports the same variable for compatibility; ``PLUGIN_DATA`` is the
   Codex-native fallback). Records turn start time, whether a verification
   command ran this turn, once-per-turn completion blocking, and
-  lifecycle-context injection dedup.
+  lifecycle-context injection dedup, including subagent stop dedup by agent id.
 - Goal contract of record in ``<cwd>/.socratic/contract.md``, maintained by the
   model per the skill instructions and restored by the SessionStart hook after
   compaction or resume.
@@ -63,6 +63,20 @@ CONTRACT_RESTORED_CONTEXT = (
     "Socratic Codex: goal contract restored from .socratic/contract.md after "
     "compaction or resume. Treat it as the contract of record and re-anchor "
     "to it before continuing:\n\n"
+)
+
+SUBAGENT_CONTEXT = (
+    "Socratic Codex subagent lifecycle: preserve the parent goal contract and "
+    "report only distilled findings. Before claiming the delegated work is "
+    "complete, include concrete evidence, remaining assumptions, and any "
+    "acceptance boundary the parent agent must handle.\n\n"
+)
+
+SUBAGENT_ACCEPTANCE_CONTEXT = (
+    "Socratic Codex subagent acceptance: your final response claims delegated "
+    "work is complete but does not cite concrete verification evidence or an "
+    "explicit unverified boundary. Continue once and return a concise handoff "
+    "with evidence, assumptions, and what the parent agent must still verify."
 )
 
 PROMPT_RE = re.compile(
@@ -440,6 +454,36 @@ def stop(data: dict[str, Any]) -> None:
         continuation(ACCEPTANCE_CONTEXT)
 
 
+def subagent_start(data: dict[str, Any]) -> None:
+    contract = read_contract(str(data.get("cwd") or "")).strip()
+    if not contract:
+        return
+    agent = str(data.get("agent_type") or "subagent")
+    audit("SubagentStart", "inject-contract", agent)
+    hook_output("SubagentStart", SUBAGENT_CONTEXT + restored_contract_text(contract))
+
+
+def subagent_stop(data: dict[str, Any]) -> None:
+    if data.get("stop_hook_active"):
+        return
+    message = str(data.get("last_assistant_message") or "")
+    if not DONE_RE.search(message) or EVIDENCE_RE.search(message):
+        return
+    session_id = str(data.get("session_id") or "")
+    agent_id = str(data.get("agent_id") or data.get("agent_type") or "subagent")
+    state = load_state(session_id)
+    blocked = state.get("subagent_completion_blocked")
+    if not isinstance(blocked, list):
+        blocked = []
+    if agent_id in blocked:
+        return
+    blocked.append(agent_id)
+    state["subagent_completion_blocked"] = blocked[-50:]
+    save_state(session_id, state)
+    audit("SubagentStop", "block-unverified-completion", agent_id)
+    continuation(SUBAGENT_ACCEPTANCE_CONTEXT)
+
+
 def session_start(data: dict[str, Any]) -> None:
     session_id = str(data.get("session_id") or "")
     state = load_state(session_id)
@@ -453,6 +497,10 @@ def session_start(data: dict[str, Any]) -> None:
 
 
 def self_test() -> None:
+    import contextlib
+    import io
+    import tempfile as _tempfile
+
     # Prompt gating: strong lifecycle signals in, generic coding verbs out.
     assert PROMPT_RE.search("$socratic-codex bind this")
     assert PROMPT_RE.search("/socratic-codex")
@@ -489,9 +537,12 @@ def self_test() -> None:
     # Completion / evidence word-face fallback.
     assert DONE_RE.search("Implemented the fix.")
     assert EVIDENCE_RE.search("Tests not run.")
+    # Subagent lifecycle: inject contract on start and block unsupported final claims once.
+    subagent_start_without_contract = io.StringIO()
+    with contextlib.redirect_stdout(subagent_start_without_contract):
+        subagent_start({"session_id": "sub/0", "cwd": "/no/such/path", "agent_type": "Explore"})
+    assert subagent_start_without_contract.getvalue() == ""
     # Contract verification freshness.
-    import tempfile as _tempfile
-
     with _tempfile.TemporaryDirectory() as tmp:
         socratic = Path(tmp) / ".socratic"
         socratic.mkdir()
@@ -510,6 +561,11 @@ def self_test() -> None:
         )
         assert "current goal" in restored
         assert "old goal" not in restored
+        started = io.StringIO()
+        with contextlib.redirect_stdout(started):
+            subagent_start({"session_id": "sub/1", "cwd": tmp, "agent_type": "Explore"})
+        assert '"hookEventName": "SubagentStart"' in started.getvalue()
+        assert "ship feature" in started.getvalue()
     # State round-trip.
     os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
     save_state("s/1", {"verification_since_prompt": True})
@@ -526,9 +582,6 @@ def self_test() -> None:
     audit("Stop", "block-unverified-completion")
     assert audit_path.stat().st_size < AUDIT_MAX_BYTES
     # Stop gate: arbitrary Bash is not evidence; repeated block is once per turn.
-    import contextlib
-    import io
-
     os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
     user_prompt_submit({"session_id": "turn/1", "prompt": "fix parser"})
     pre_tool_use({"session_id": "turn/1", "tool_name": "Bash", "tool_input": {"command": "ls -la"}})
@@ -552,6 +605,52 @@ def self_test() -> None:
     with contextlib.redirect_stdout(verified):
         stop({"session_id": "turn/2", "cwd": tmp, "last_assistant_message": "Implemented and complete."})
     assert verified.getvalue() == ""
+    os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
+    subagent_blocked = io.StringIO()
+    with contextlib.redirect_stdout(subagent_blocked):
+        subagent_stop(
+            {
+                "session_id": "turn/3",
+                "agent_id": "agent-1",
+                "agent_type": "Explore",
+                "last_assistant_message": "Implemented and complete.",
+            }
+        )
+    assert '"decision": "block"' in subagent_blocked.getvalue()
+    subagent_repeated = io.StringIO()
+    with contextlib.redirect_stdout(subagent_repeated):
+        subagent_stop(
+            {
+                "session_id": "turn/3",
+                "agent_id": "agent-1",
+                "agent_type": "Explore",
+                "last_assistant_message": "Implemented and complete.",
+            }
+        )
+    assert subagent_repeated.getvalue() == ""
+    subagent_with_evidence = io.StringIO()
+    with contextlib.redirect_stdout(subagent_with_evidence):
+        subagent_stop(
+            {
+                "session_id": "turn/3",
+                "agent_id": "agent-2",
+                "agent_type": "Explore",
+                "last_assistant_message": "Completed. Tests not run; parent must verify.",
+            }
+        )
+    assert subagent_with_evidence.getvalue() == ""
+    save_state("turn/4", {"subagent_completion_blocked": "bad"})
+    subagent_corrupt_state = io.StringIO()
+    with contextlib.redirect_stdout(subagent_corrupt_state):
+        subagent_stop(
+            {
+                "session_id": "turn/4",
+                "agent_id": "agent-3",
+                "agent_type": "Explore",
+                "last_assistant_message": "Implemented and complete.",
+            }
+        )
+    assert '"decision": "block"' in subagent_corrupt_state.getvalue()
 
 
 def main() -> int:
@@ -562,6 +661,8 @@ def main() -> int:
         "user-prompt-submit": user_prompt_submit,
         "pre-tool-use": pre_tool_use,
         "stop": stop,
+        "subagent-start": subagent_start,
+        "subagent-stop": subagent_stop,
         "session-start": session_start,
     }
     handler = handlers.get(sys.argv[1] if len(sys.argv) > 1 else "")
