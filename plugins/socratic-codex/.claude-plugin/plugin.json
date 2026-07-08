@@ -17,7 +17,6 @@
     "acceptance"
   ],
   "hooks": [
-    "./hooks/hooks.json",
-    "./hooks/claude.json"
+    "./hooks/hooks.json"
   ]
 }
