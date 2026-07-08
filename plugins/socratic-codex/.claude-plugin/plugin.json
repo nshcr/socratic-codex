@@ -1,7 +1,7 @@
 {
   "name": "socratic-codex",
   "displayName": "Socratic Codex",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Goal-lifecycle control for coding agents: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
   "author": {
     "name": "Junius Chen"
