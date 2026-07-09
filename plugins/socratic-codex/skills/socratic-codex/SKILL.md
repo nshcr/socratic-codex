@@ -28,13 +28,13 @@ Before sustained action, bind only enough contract to prevent drift. Infer first
 
 Track compactly: outcome/output; scope/non-goals; constraints/risk; expected behavior; action-affecting assumptions; plan skeleton; done criteria; verification; checkpoint triggers; unresolved user-owned boundary.
 
-For active sustained work only, persist `.socratic/contract.md`:
+For active sustained work only, persist `.socratic/contracts/<session-id>.md`:
 
 - `## Contract`: short current goal, scope, constraints, done criteria, verification.
 - `## Delta Log`: compact dated deltas with source: explicit user change, inspected fact, or model drift.
 - `## Verification`: evidence actually gathered against done criteria.
 
-Update it on every contract delta and before completion claims. For unrelated new goals, replace `## Contract` and `## Verification`, log the switch, and drop old done criteria. After compaction/resume, the restored current contract is authoritative. Do not commit `.socratic/` unless asked.
+Update it on every contract delta and before completion claims. For unrelated new goals in the same session, replace `## Contract` and `## Verification`, log the switch, and drop old done criteria. Separate sessions in the same workspace keep separate contract files. If the session contract is missing, recreate it from current context before material action. After compaction/resume, the restored session contract is authoritative. Do not commit `.socratic/` unless asked.
 
 ## Routing Precedence
 

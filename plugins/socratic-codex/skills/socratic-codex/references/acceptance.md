@@ -4,7 +4,7 @@ Read before claiming completion or handing off acceptance.
 
 ## Compare
 
-Compare original ask, current contract (`.socratic/contract.md`), constraints, done criteria, evidence, and remaining assumed/user-owned boundaries. Skipping this makes completion unsupported.
+Compare original ask, current session contract (`.socratic/contracts/<session-id>.md`), constraints, done criteria, evidence, and remaining assumed/user-owned boundaries. Skipping this makes completion unsupported.
 
 ## Evidence
 
