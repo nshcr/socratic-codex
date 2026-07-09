@@ -8,9 +8,9 @@ State model:
   command ran this turn, whether a Socratic lifecycle is active, once-per-turn
   completion blocking, lifecycle-context injection dedup, and subagent stop
   dedup by agent id.
-- Goal contract of record in ``<cwd>/.socratic/contract.md``, maintained by the
-  model per the skill instructions and restored by the SessionStart hook after
-  compaction or resume.
+- Goal contract of record in ``<cwd>/.socratic/contracts/<safe-session-id>.md``,
+  maintained by the model per the skill instructions and restored by the
+  SessionStart hook after compaction or resume.
 - Bounded audit log in ``$CLAUDE_PLUGIN_DATA/audit.jsonl`` recording recent hook
   interventions (never silent pass-throughs).
 
@@ -29,45 +29,53 @@ import time
 from pathlib import Path
 from typing import Any
 
-CONTRACT_RELPATH = os.path.join(".socratic", "contract.md")
+CONTRACT_DIR_RELPATH = os.path.join(".socratic", "contracts")
 CONTRACT_MAX_CHARS = 6000
 AUDIT_MAX_BYTES = 256 * 1024
 AUDIT_KEEP_BYTES = 128 * 1024
 STATE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 
-LIFECYCLE_CONTEXT = (
+LIFECYCLE_CONTEXT_TEMPLATE = (
     "Socratic Codex: for sustained work, bind a compact goal contract and "
-    "persist it to .socratic/contract.md; inspect before asking; ask only "
-    "action-changing user-owned uncertainty; use Boundary Gate before scope, risk, "
-    "architecture, side-effect, irreversible, or acceptance changes; do not "
-    "claim completion until evidence matches done criteria."
+    "persist it to {path}; if it is missing, recreate it from current context "
+    "before material action; inspect before asking; ask only action-changing "
+    "user-owned uncertainty; use Boundary Gate before scope, risk, architecture, "
+    "side-effect, irreversible, or acceptance changes; do not claim completion "
+    "until evidence matches done criteria."
 )
 
-BOUNDARY_CONTEXT = (
+BOUNDARY_CONTEXT_TEMPLATE = (
     "Socratic Codex Boundary Gate: the next tool call may cross a user-owned "
     "scope, risk, side-effect, irreversible, or acceptance boundary. Preserve "
-    "the goal contract, checkpoint if the answer changes the next action, and "
-    "prefer the smallest reversible step."
+    "the goal contract at {path}, checkpoint if the answer changes the next "
+    "action, and prefer the smallest reversible step."
 )
 
-ACCEPTANCE_CONTEXT = (
+ACCEPTANCE_CONTEXT_TEMPLATE = (
     "Socratic Codex Acceptance Close: a completion claim was made without "
     "observed verification this turn (no verification command ran and "
-    ".socratic/contract.md has no fresh Verification update). Compare the "
-    "original ask, current goal contract, done criteria, and evidence; run or "
-    "cite the missing verification and update the Verification section in "
-    ".socratic/contract.md, or state explicitly what remains unverified "
-    "instead of claiming full completion."
+    "{path} has no fresh Verification update). Compare the original ask, "
+    "current goal contract, done criteria, and evidence; run or cite the "
+    "missing verification and update the Verification section in {path}, or "
+    "state explicitly what remains unverified instead of claiming full "
+    "completion."
 )
 
-CONTRACT_RESTORED_CONTEXT = (
-    "Socratic Codex: goal contract restored from .socratic/contract.md after "
+CONTRACT_RESTORED_CONTEXT_TEMPLATE = (
+    "Socratic Codex: goal contract restored from {path} after "
     "compaction or resume. Treat it as the contract of record and re-anchor "
     "to it before continuing:\n\n"
 )
 
-SUBAGENT_CONTEXT = (
+CONTRACT_MISSING_CONTEXT_TEMPLATE = (
+    "Socratic Codex: no session goal contract found at {path}. If this lifecycle "
+    "continues sustained work, recreate a compact contract there from current "
+    "context before material action."
+)
+
+SUBAGENT_CONTEXT_TEMPLATE = (
     "Socratic Codex subagent lifecycle: preserve the parent goal contract and "
+    "contract path ({path}), then "
     "report only distilled findings. Before claiming the delegated work is "
     "complete, include concrete evidence, remaining assumptions, and any "
     "acceptance boundary the parent agent must handle.\n\n"
@@ -193,9 +201,12 @@ def data_dir() -> Path:
     return Path(tempfile.gettempdir()) / "socratic-codex"
 
 
+def safe_session_id(session_id: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "-", session_id) or "unknown-session"
+
+
 def state_path(session_id: str) -> Path:
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "-", session_id)
-    return data_dir() / "state" / f"{safe}.json"
+    return data_dir() / "state" / f"{safe_session_id(session_id)}.json"
 
 
 def cleanup_old_states(now: float | None = None) -> None:
@@ -256,13 +267,17 @@ def audit(event: str, action: str, detail: str = "") -> None:
         pass
 
 
-def contract_path(cwd: str) -> Path:
-    return Path(cwd or ".") / CONTRACT_RELPATH
+def contract_relpath(session_id: str) -> str:
+    return os.path.join(CONTRACT_DIR_RELPATH, f"{safe_session_id(session_id)}.md")
 
 
-def read_contract(cwd: str) -> str:
+def contract_path(cwd: str, session_id: str) -> Path:
+    return Path(cwd or ".") / contract_relpath(session_id)
+
+
+def read_contract(cwd: str, session_id: str) -> str:
     try:
-        return contract_path(cwd).read_text(encoding="utf-8", errors="replace")
+        return contract_path(cwd, session_id).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
 
@@ -287,9 +302,9 @@ def lifecycle_active(state: dict[str, Any]) -> bool:
     return bool(state.get("lifecycle_session_active") or state.get("lifecycle_active_since_prompt"))
 
 
-def contract_verification_updated(cwd: str, since_ts: float) -> bool:
-    """True when contract.md was touched this turn and has verification content."""
-    path = contract_path(cwd)
+def contract_verification_updated(cwd: str, session_id: str, since_ts: float) -> bool:
+    """True when the session contract was touched this turn and has verification content."""
+    path = contract_path(cwd, session_id)
     try:
         if path.stat().st_mtime + 1.0 < since_ts:
             return False
@@ -452,13 +467,13 @@ def user_prompt_submit(data: dict[str, Any]) -> None:
     save_state(session_id, state)
     if inject:
         audit("UserPromptSubmit", "inject-lifecycle")
-        hook_output("UserPromptSubmit", LIFECYCLE_CONTEXT)
+        hook_output("UserPromptSubmit", LIFECYCLE_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id)))
 
 
 def pre_tool_use(data: dict[str, Any]) -> None:
     tool = str(data.get("tool_name", ""))
+    session_id = str(data.get("session_id") or "")
     if tool == "Bash":
-        session_id = str(data.get("session_id") or "")
         state = load_state(session_id)
         command = tool_command(data)
         if command_is_verification(command) and not state.get("verification_since_prompt"):
@@ -466,17 +481,17 @@ def pre_tool_use(data: dict[str, Any]) -> None:
             save_state(session_id, state)
         if command_is_risky(command):
             audit("PreToolUse", "boundary-gate", command)
-            hook_output("PreToolUse", BOUNDARY_CONTEXT)
+            hook_output("PreToolUse", BOUNDARY_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id)))
     elif tool == "apply_patch":
         command = tool_command(data)
         if patch_crosses_boundary(command):
             audit("PreToolUse", "boundary-gate", "apply_patch")
-            hook_output("PreToolUse", BOUNDARY_CONTEXT)
+            hook_output("PreToolUse", BOUNDARY_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id)))
     elif tool in FILE_EDIT_TOOLS:
         file_path = tool_file_path(data)
         if path_is_sensitive(file_path):
             audit("PreToolUse", "boundary-gate", file_path)
-            hook_output("PreToolUse", BOUNDARY_CONTEXT)
+            hook_output("PreToolUse", BOUNDARY_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id)))
 
 
 def stop(data: dict[str, Any]) -> None:
@@ -491,14 +506,24 @@ def stop(data: dict[str, Any]) -> None:
     if not lifecycle_active(state):
         return
     last_prompt_ts = state.get("last_prompt_ts")
+    contract = read_contract(cwd, session_id).strip()
+    unverified_boundary = bool(UNVERIFIED_BOUNDARY_RE.search(message))
+    if not contract and not unverified_boundary:
+        if state.get("completion_blocked_since_prompt"):
+            return
+        state["completion_blocked_since_prompt"] = True
+        save_state(session_id, state)
+        audit("Stop", "block-missing-contract", contract_relpath(session_id))
+        continuation(CONTRACT_MISSING_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id)))
+        return
     if isinstance(last_prompt_ts, (int, float)):
         # Behavioral evidence: a verification command ran this turn, or the contract's
         # Verification section was updated this turn. Word-face claims alone
         # do not count when the ledger is available.
         evidence = (
             bool(state.get("verification_since_prompt"))
-            or contract_verification_updated(cwd, float(last_prompt_ts))
-            or bool(UNVERIFIED_BOUNDARY_RE.search(message))
+            or contract_verification_updated(cwd, session_id, float(last_prompt_ts))
+            or unverified_boundary
         )
     else:
         evidence = bool(EVIDENCE_RE.search(message))
@@ -508,7 +533,7 @@ def stop(data: dict[str, Any]) -> None:
         state["completion_blocked_since_prompt"] = True
         save_state(session_id, state)
         audit("Stop", "block-unverified-completion")
-        continuation(ACCEPTANCE_CONTEXT)
+        continuation(ACCEPTANCE_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id)))
 
 
 def subagent_start(data: dict[str, Any]) -> None:
@@ -516,8 +541,14 @@ def subagent_start(data: dict[str, Any]) -> None:
     state = load_state(session_id)
     if not lifecycle_active(state):
         return
-    contract = read_contract(str(data.get("cwd") or "")).strip()
+    contract = read_contract(str(data.get("cwd") or ""), session_id).strip()
     if not contract:
+        audit("SubagentStart", "missing-contract", contract_relpath(session_id))
+        hook_output(
+            "SubagentStart",
+            SUBAGENT_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id))
+            + CONTRACT_MISSING_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id)),
+        )
         return
     agent = str(data.get("agent_type") or "subagent")
     agent_id = str(data.get("agent_id") or agent)
@@ -528,7 +559,11 @@ def subagent_start(data: dict[str, Any]) -> None:
     state["active_subagents"] = active[-50:]
     save_state(session_id, state)
     audit("SubagentStart", "inject-contract", agent)
-    hook_output("SubagentStart", SUBAGENT_CONTEXT + restored_contract_text(contract))
+    hook_output(
+        "SubagentStart",
+        SUBAGENT_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id))
+        + restored_contract_text(contract),
+    )
 
 
 def subagent_stop(data: dict[str, Any]) -> None:
@@ -562,13 +597,25 @@ def session_start(data: dict[str, Any]) -> None:
     if state.get("lifecycle_injected"):
         state["lifecycle_injected"] = False
         save_state(session_id, state)
-    contract = read_contract(str(data.get("cwd") or "")).strip()
+    contract = read_contract(str(data.get("cwd") or ""), session_id).strip()
     if contract:
         state["lifecycle_session_active"] = True
         state["lifecycle_restored_from_contract"] = True
         save_state(session_id, state)
         audit("SessionStart", "restore-contract", str(data.get("source") or ""))
-        hook_output("SessionStart", CONTRACT_RESTORED_CONTEXT + restored_contract_text(contract))
+        hook_output(
+            "SessionStart",
+            CONTRACT_RESTORED_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id))
+            + restored_contract_text(contract),
+        )
+    elif lifecycle_active(state):
+        state["lifecycle_restored_from_contract"] = True
+        save_state(session_id, state)
+        audit("SessionStart", "missing-contract", contract_relpath(session_id))
+        hook_output(
+            "SessionStart",
+            CONTRACT_MISSING_CONTEXT_TEMPLATE.format(path=contract_relpath(session_id)),
+        )
 
 
 def self_test() -> None:
@@ -607,6 +654,10 @@ def self_test() -> None:
     assert not command_is_verification("python3 scripts/inspect.py")
     assert not command_is_verification("ls -la")
     assert not command_is_verification("git status")
+    risky_hook = io.StringIO()
+    with contextlib.redirect_stdout(risky_hook):
+        pre_tool_use({"session_id": "risk/1", "tool_name": "Bash", "tool_input": {"command": "git push"}})
+    assert ".socratic/contracts/risk-1.md" in risky_hook.getvalue()
     # Patch and file-path boundaries.
     assert patch_crosses_boundary("*** Delete File: README.md")
     assert patch_crosses_boundary("*** Update File: .claude/settings.json")
@@ -622,6 +673,7 @@ def self_test() -> None:
     assert DONE_RE.search("Implemented the fix.")
     assert EVIDENCE_RE.search("Tests not run.")
     assert UNVERIFIED_BOUNDARY_RE.search("Tests not run; parent must verify.")
+    assert contract_relpath("turn/2") == os.path.join(".socratic", "contracts", "turn-2.md")
     # Subagent lifecycle: inject contract on start and block unsupported final claims once.
     subagent_start_without_contract = io.StringIO()
     with contextlib.redirect_stdout(subagent_start_without_contract):
@@ -629,18 +681,18 @@ def self_test() -> None:
     assert subagent_start_without_contract.getvalue() == ""
     # Contract verification freshness.
     with _tempfile.TemporaryDirectory() as tmp:
-        socratic = Path(tmp) / ".socratic"
-        socratic.mkdir()
-        (socratic / "contract.md").write_text(
+        contract = contract_path(tmp, "sub/1")
+        contract.parent.mkdir(parents=True)
+        contract.write_text(
             "## Contract\nship feature\n\n## Verification\n- pytest passed (12 tests)\n",
             encoding="utf-8",
         )
-        assert contract_verification_updated(tmp, time.time() - 60)
-        assert not contract_verification_updated(tmp, time.time() + 3600)
-        (socratic / "contract.md").write_text(
+        assert contract_verification_updated(tmp, "sub/1", time.time() - 60)
+        assert not contract_verification_updated(tmp, "sub/1", time.time() + 3600)
+        contract.write_text(
             "## Contract\nship feature\n\n## Verification\n", encoding="utf-8"
         )
-        assert not contract_verification_updated(tmp, time.time() - 60)
+        assert not contract_verification_updated(tmp, "sub/1", time.time() - 60)
         restored = restored_contract_text(
             "## Contract\ncurrent goal\n\n## Delta Log\n" + ("old goal\n" * 4000)
         )
@@ -651,6 +703,12 @@ def self_test() -> None:
             subagent_start({"session_id": "sub/1", "cwd": tmp, "agent_type": "Explore"})
         assert stale_started.getvalue() == ""
         os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(_tempfile.mkdtemp()) / "data")
+        save_state("sub/missing", {"lifecycle_session_active": True})
+        missing_started = io.StringIO()
+        with contextlib.redirect_stdout(missing_started):
+            subagent_start({"session_id": "sub/missing", "cwd": tmp, "agent_type": "Explore"})
+        assert "no session goal contract found" in missing_started.getvalue()
+        assert ".socratic/contracts/sub-missing.md" in missing_started.getvalue()
         save_state("sub/1", {"lifecycle_session_active": True})
         started = io.StringIO()
         with contextlib.redirect_stdout(started):
@@ -700,6 +758,9 @@ def self_test() -> None:
         assert gap.getvalue() == ""
         with contextlib.redirect_stdout(io.StringIO()):
             user_prompt_submit({"session_id": "turn/3", "prompt": "$socratic-codex fix parser", "cwd": stop_tmp})
+        turn3_contract = contract_path(stop_tmp, "turn/3")
+        turn3_contract.parent.mkdir(parents=True, exist_ok=True)
+        turn3_contract.write_text("## Contract\nfinish goal\n\n## Verification\n", encoding="utf-8")
         pre_tool_use(
             {
                 "session_id": "turn/3",
@@ -711,22 +772,70 @@ def self_test() -> None:
         with contextlib.redirect_stdout(verified):
             stop({"session_id": "turn/3", "cwd": stop_tmp, "last_assistant_message": "Implemented and complete."})
         assert verified.getvalue() == ""
-        (Path(stop_tmp) / ".socratic").mkdir()
-        (Path(stop_tmp) / ".socratic" / "contract.md").write_text(
-            "## Contract\nfinish goal\n\n## Verification\n", encoding="utf-8"
-        )
-        user_prompt_submit({"session_id": "turn/4", "prompt": "fix parser", "cwd": stop_tmp})
-        stale_contract = io.StringIO()
-        with contextlib.redirect_stdout(stale_contract):
-            stop({"session_id": "turn/4", "cwd": stop_tmp, "last_assistant_message": "Finished."})
-        assert stale_contract.getvalue() == ""
         with contextlib.redirect_stdout(io.StringIO()):
+            user_prompt_submit({"session_id": "turn/no-contract-verified", "prompt": "$socratic-codex fix parser", "cwd": stop_tmp})
+        pre_tool_use(
+            {
+                "session_id": "turn/no-contract-verified",
+                "tool_name": "Bash",
+                "tool_input": {"command": "python3 -m json.tool hooks.json"},
+            }
+        )
+        missing_despite_verification = io.StringIO()
+        with contextlib.redirect_stdout(missing_despite_verification):
+            stop(
+                {
+                    "session_id": "turn/no-contract-verified",
+                    "cwd": stop_tmp,
+                    "last_assistant_message": "Implemented and complete.",
+                }
+            )
+        assert '"decision": "block"' in missing_despite_verification.getvalue()
+        assert ".socratic/contracts/turn-no-contract-verified.md" in missing_despite_verification.getvalue()
+        user_prompt_submit({"session_id": "turn/4", "prompt": "fix parser", "cwd": stop_tmp})
+        missing_contract_new_task = io.StringIO()
+        with contextlib.redirect_stdout(missing_contract_new_task):
+            stop({"session_id": "turn/4", "cwd": stop_tmp, "last_assistant_message": "Finished."})
+        assert missing_contract_new_task.getvalue() == ""
+        missing_inactive_restore = io.StringIO()
+        with contextlib.redirect_stdout(missing_inactive_restore):
             session_start({"session_id": "turn/5", "cwd": stop_tmp, "source": "resume"})
+        assert missing_inactive_restore.getvalue() == ""
         user_prompt_submit({"session_id": "turn/5", "prompt": "fix parser", "cwd": stop_tmp})
         restored_but_new_task = io.StringIO()
         with contextlib.redirect_stdout(restored_but_new_task):
             stop({"session_id": "turn/5", "cwd": stop_tmp, "last_assistant_message": "Finished."})
         assert restored_but_new_task.getvalue() == ""
+        save_state("turn/missing", {"lifecycle_session_active": True})
+        missing_contract = io.StringIO()
+        with contextlib.redirect_stdout(missing_contract):
+            session_start({"session_id": "turn/missing", "cwd": stop_tmp, "source": "resume"})
+        assert "no session goal contract found" in missing_contract.getvalue()
+        user_prompt_submit({"session_id": "turn/missing", "prompt": "fix parser", "cwd": stop_tmp})
+        missing_new_task = io.StringIO()
+        with contextlib.redirect_stdout(missing_new_task):
+            stop({"session_id": "turn/missing", "cwd": stop_tmp, "last_assistant_message": "Finished."})
+        assert missing_new_task.getvalue() == ""
+        save_state("turn/missing-continue", {"lifecycle_session_active": True})
+        with contextlib.redirect_stdout(io.StringIO()):
+            session_start({"session_id": "turn/missing-continue", "cwd": stop_tmp, "source": "resume"})
+        user_prompt_submit({"session_id": "turn/missing-continue", "prompt": "continue", "cwd": stop_tmp})
+        missing_continue = io.StringIO()
+        with contextlib.redirect_stdout(missing_continue):
+            stop(
+                {
+                    "session_id": "turn/missing-continue",
+                    "cwd": stop_tmp,
+                    "last_assistant_message": "Finished.",
+                }
+            )
+        assert '"decision": "block"' in missing_continue.getvalue()
+        assert ".socratic/contracts/turn-missing-continue.md" in missing_continue.getvalue()
+        turn6_contract = contract_path(stop_tmp, "turn/6")
+        turn6_contract.parent.mkdir(parents=True, exist_ok=True)
+        turn6_contract.write_text(
+            "## Contract\nfinish goal\n\n## Verification\n", encoding="utf-8"
+        )
         with contextlib.redirect_stdout(io.StringIO()):
             session_start({"session_id": "turn/6", "cwd": stop_tmp, "source": "resume"})
         user_prompt_submit({"session_id": "turn/6", "prompt": "continue", "cwd": stop_tmp})
