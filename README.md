@@ -1,156 +1,155 @@
 # Socratic Codex
 
-**Socratic Codex is an experimental agent plugin for keeping long-running work aligned with the user's actual goal. It ships for both Codex and Claude Code.**
+**Socratic Codex is a compact checkpoint policy for advanced coding agents on Codex and Claude Code.**
 
-It gives the agent a goal lifecycle: bind the intent, inspect before asking, checkpoint only at user-owned boundaries, recover when work drifts, and close only with evidence.
+It adds checkpoints where capable models still benefit from an explicit control
+policy: goal drift, consequential boundary changes, stalled diagnosis, and
+unsupported completion claims. It continues safe, authorized work until
+evidence closes acceptance, the goal is abandoned or superseded, or progress is
+genuinely blocked. It delegates state, permissions, context continuity, and
+subagent handoff to the host instead of recreating them in hooks.
 
-**中文摘要：** Socratic Codex 是一个实验性的 agent plugin，同时支持 Codex 和 Claude Code，用来让长任务始终围绕用户真正想要的目标推进。它给 agent 加上一套 goal lifecycle：绑定意图、先检查再提问、只在用户拥有的边界做 checkpoint、漂移时重新校准，最后用证据收尾。
+**中文摘要：** Socratic Codex 是面向高级 coding agent 的紧凑目标校准
+skill。它只补强目标漂移、重大边界变化、诊断停滞、过早停止和缺乏证据的
+完成声明；只要仍有安全且已授权的动作就继续推进，直到证据完成验收或出现
+真实终止条件。状态、权限、上下文连续性与 subagent 交接由宿主原生能力负责，
+不再用 hooks 重复实现。
 
 ## Quick start
+
+### Codex
 
 ```bash
 codex plugin marketplace add nshcr/socratic-codex
 codex plugin add socratic-codex@socratic-codex
 ```
 
-Then invoke it in a Codex session:
+Invoke it explicitly:
 
 ```text
-Use $socratic-codex to bind this goal.
-Use $socratic-codex to steer this lifecycle.
-Use $socratic-codex to close acceptance.
+Use $socratic-codex to carry this goal through evidence-backed acceptance.
+Use $socratic-codex to recover this stuck investigation.
+Use $socratic-codex to close this request against evidence.
 ```
 
-Check installation:
+Verify installation with `codex plugin marketplace list` and
+`codex plugin list`, then restart Codex if needed.
 
-```bash
-codex plugin marketplace list
-codex plugin list
-```
-
-You should see `socratic-codex@socratic-codex` as installed and enabled.
-Restart Codex after installation. If you enable the bundled hooks, review and trust the Socratic Codex hook definitions in Codex before relying on them.
-
-**中文摘要：** 先用 Codex CLI 添加 marketplace 并安装插件，然后在 Codex 会话中通过 `$socratic-codex` 显式调用。安装后可用 `codex plugin marketplace list` 和 `codex plugin list` 验证，正常情况下会看到 `socratic-codex@socratic-codex` 已安装并启用。安装后重启 Codex；如果启用随插件打包的 hooks，需要先在 Codex 中完成这些 hook 定义的 review 和 trust。
-
-## Quick start (Claude Code)
+### Claude Code
 
 ```bash
 claude plugin marketplace add nshcr/socratic-codex
 claude plugin install socratic-codex@socratic-codex
 ```
 
-Then invoke it in a Claude Code session:
+Invoke `/socratic-codex:socratic-codex` or ask Claude Code to use the skill
+explicitly. Verify installation with `claude plugin list`.
 
-```text
-/socratic-codex
-Use the socratic-codex skill to bind this goal.
-Use the socratic-codex skill to close acceptance.
-```
-
-Claude Code can also invoke the skill implicitly based on its description. Check installation:
-
-```bash
-claude plugin list
-```
-
-The shared hooks load from `hooks/hooks.json`. Hook commands run with your user permissions, so review `hooks/socratic_hooks.py` before enabling if that matters in your environment.
-
-**中文摘要：** Claude Code 用户用 `claude plugin marketplace add nshcr/socratic-codex` 添加 marketplace，再用 `claude plugin install socratic-codex@socratic-codex` 安装。会话中可用 `/socratic-codex` 或示例提示显式调用，Claude Code 也会根据 skill 描述隐式调用；安装后用 `claude plugin list` 验证。共享 hooks 来自 `hooks/hooks.json`；hook 命令以你的用户权限运行，如果这会影响你的环境，启用前先 review `hooks/socratic_hooks.py`。
+**中文摘要：** 建议显式调用该 skill。Codex 默认禁用 implicit invocation，
+避免清晰任务被额外的 checkpoint policy 拖慢。上面的命令分别完成 Codex
+和 Claude Code 安装；Codex 使用 `$socratic-codex`，Claude Code 使用带插件
+命名空间的 `/socratic-codex:socratic-codex`。安装后可用各自的 plugin list
+命令确认，Codex 必要时需要重启。
 
 ## What it changes
 
-Socratic Codex changes how the agent handles work that has more than one obvious step.
+The skill changes action order at four points:
 
-- Turns a loose request into a compact goal contract.
-- Separates facts the agent can inspect from choices only the user can make.
-- Prevents plans, generated tests, clean logs, or tool success from becoming false proof.
-- Stops before risky scope, architecture, irreversible, or acceptance-boundary changes.
-- Recovers from drift by re-reading the ask, the evidence, and the current workspace state.
-- Closes with what was verified, what remains assumed, and what still needs acceptance.
+1. **Preserve:** keep only the intended outcome, confirmed boundaries, required
+   acceptance evidence, and the next unresolved user-owned choice.
+2. **Decide:** inspect first; ask only when the answer changes the next action and
+   cannot be derived safely from evidence.
+3. **Recover:** after two non-informative attempts, switch from variations to a
+   reproducer, falsifiable hypotheses, and a discriminating observation.
+4. **Close:** continue safe, authorized work while it can reduce uncertainty or
+   satisfy unmet outcomes, then map every requested outcome and confirmed
+   constraint to observed evidence before claiming completion.
 
-**中文摘要：** 它会改变 agent 处理多步骤任务的方式：把模糊请求压缩成目标契约；区分 agent 能自己核查的事实和只能由用户做出的选择；避免把计划、生成的测试、干净日志或命令成功误当成完成证明；在涉及 scope、architecture、不可逆操作或 acceptance boundary 的风险变化前暂停；发生漂移时重新对齐原始请求、证据和当前工作区；最终说明哪些已验证、哪些仍是假设、哪些需要用户验收。
+It prefers the host's native goal, plan, compaction, permission, and subagent
+features. It does not create `.socratic/` files, runtime ledgers, audit logs, or
+a parallel lifecycle state machine.
 
-## Hook-backed guardrails
-
-The plugin bundles lifecycle hooks that reinforce the same skill contract with deterministic state:
-
-- **Contract persistence and restore.** For active sustained work, the skill maintains `.socratic/contracts/<session-id>.md` with a short current `## Contract`, compact `## Delta Log`, and `## Verification` evidence. `SessionStart` restores only the current session contract after compaction or resume, so old deltas do not drown out the active goal and separate sessions in the same workspace do not overwrite each other. A restored contract reactivates completion gates only when the next prompt clearly continues the lifecycle; ordinary unrelated prompts can pass through. If the user switches to an unrelated goal in the same session, the current contract and verification should be replaced, with the switch recorded as a delta. If the session contract is missing, the model should recreate it from current context before material action. These files are overhead for short deterministic tasks; consider adding `.socratic/` to your local git excludes.
-- **Behavioral acceptance gate.** For active lifecycle turns (explicit Socratic prompt, same-session active lifecycle, or a restored contract followed by a continuation prompt), the `Stop` hook keeps a per-session activity ledger (in the plugin data directory) and blocks a completion claim once when *no verification command ran this turn*, *the contract's Verification section was not updated this turn*, and *the response does not explicitly hand off an unverified boundary*. Ordinary deterministic turns pass through. Saying "verified" is not enough; doing something verifiable or naming the missing verification boundary is what counts.
-- **Subagent lifecycle handoff.** During active lifecycles, `SubagentStart` passes the current goal contract into spawned subagents. `SubagentStop` blocks an unsupported delegated completion claim once, requiring a concise handoff with evidence, assumptions, and parent-agent acceptance boundaries. Ordinary subagents outside an active lifecycle pass through.
-- **Boundary Gate before risky calls.** `PreToolUse` parses shell commands structurally (chains, substitutions, env prefixes) against a destructive-command table, and gates edits to exact sensitive plugin/agent config paths (`plugin.json`, `hooks.json`, `settings.json`, `.mcp.json`, `config.toml`). Dry-run pushes and documentation text that merely mentions those filenames pass through.
-- **Lifecycle context, once.** `UserPromptSubmit` injects compact lifecycle context only on strong signals (`$socratic-codex`, `/socratic-codex`, `@socratic-codex`, `/goal`, acceptance/drift/rollback language) and only once per session; the flag resets after compaction.
-- **Runtime ledger and audit log.** The per-session ledger stores only turn timing, verification-command evidence, once-per-turn completion blocking, subagent stop deduplication, and lifecycle-context deduplication. Old state files are pruned opportunistically after 30 days. Hook interventions are written to a bounded `audit.jsonl` in the plugin data directory, capped at 256 KB by keeping the recent tail.
-
-These hooks do not replace the skill's judgment and are not a complete security boundary. Codex cannot intercept `unified_exec` shell paths, and regex/parse-based gates can be bypassed; treat them as reminders at the points where the agent is most likely to start, cross a boundary, or stop too early. Codex requires users to review and trust plugin-bundled hooks before they run; Claude Code loads plugin hooks when the plugin is enabled.
-
-**中文摘要：** hooks 现在带确定性状态：对活跃的长任务，skill 把短小的当前 `## Contract`、紧凑的 `## Delta Log` 和 `## Verification` 写入 `.socratic/contracts/<session-id>.md`；`SessionStart` 在 compaction 或 resume 后只恢复当前会话契约，避免历史 delta 淹没当前目标，也避免同一工作区的不同会话互相覆盖。恢复出来的 contract 只有在下一条 prompt 明确继续当前 lifecycle 时才重新激活完成检查；普通无关 prompt 可以直接放行。完全切换到同一会话内的无关新目标时，应替换当前契约和验证段，只把切换记录为 delta；如果当前会话契约不存在，模型应先根据当前上下文重建一份；短小确定任务不需要这些文件。`Stop` hook 只在显式 Socratic prompt、同会话活跃 lifecycle，或 resume 后明确继续的回合运行；只有当本回合既没跑验证命令、也没更新当前会话契约的 Verification 段、并且回复没有明确交接未验证边界时，才对完成声明拦截一次；普通确定性回合直接放行。只说“已验证”不算数，真正的验证行为或明确的未验证边界才算。`SubagentStart` 只在活跃 lifecycle 中把当前会话契约交给新启动的 subagent，`SubagentStop` 只在活跃 lifecycle 中对缺少证据、假设说明或 parent-agent 验收边界的 delegated completion claim 拦截一次。`PreToolUse` 会结构化解析 shell chains、substitutions 和 env prefixes，对照 destructive-command table，并 gate 精确的敏感 plugin 和 agent 配置路径；dry-run push 和文档正文中提到配置文件名不会触发。`UserPromptSubmit` 只在 `$socratic-codex`、`/socratic-codex`、`@socratic-codex`、`/goal`、验收、漂移或回滚等 strong signals 下每会话注入一次生命周期上下文，compaction 后重置。ledger 只保存 turn 时间、验证命令证据、每回合一次的完成拦截状态、subagent 拦截去重和注入去重标记，旧 state 会在 30 天后顺手清理；hook 干预会写入有 256 KB 上限的 `audit.jsonl`，只保留最近尾部。总体上，这些 hooks 不替代 skill 判断，也不是完整安全边界：Codex 无法拦截 `unified_exec` shell 路径，regex 或 parse-based gates 也可被绕过；Codex 需要用户先 review 并 trust 插件 hooks，Claude Code 会在插件启用后加载 hooks。
-
-## Why use it
-
-Use it when the cost of a confident wrong answer is higher than the cost of one well-placed checkpoint.
-
-It is useful for advanced coding-agent sessions where the model is capable enough to do real work, but still needs guardrails around goal drift, premature completion claims, hidden assumption changes, and diagnostic loops that stop producing new evidence.
-
-**中文摘要：** 当“自信但错误地推进”比“在关键处停下来确认一次”代价更高时，就该用它。它尤其适合高级 coding-agent 会话：模型已经能做复杂工作，但仍需要防止目标漂移、过早声称完成、悄悄改变假设，以及陷入不再产生新证据的诊断循环。
+**中文摘要：** 它只在四个节点改变行动顺序：保留最小目标状态；先核查再在
+真正属于用户的边界提问；两次无信息增益的尝试后切换到可证伪诊断；完成前
+逐项用观察证据对照原始请求；只要仍有安全且已授权的下一步，就不能把进度
+汇报或回合结束当作停止条件。它复用宿主原生能力，不再创建 `.socratic/`
+文件、ledger、audit log 或第二套状态机。
 
 ## When to use it
 
-Use `$socratic-codex` for:
+Use it for:
 
-- `/goal` drafting, binding, and steering.
-- Solution-shaped requests where scope can drift.
-- Architecture or target changes that affect later work.
-- Debugging sessions with repeated failures or contradictory evidence.
-- Risky edits, migrations, teardown, or irreversible side effects.
-- Final acceptance, handoff, or "is this actually done?" checks.
+- sustained work whose scope or acceptance can drift;
+- corrections such as “this is the wrong direction”;
+- repeated failures or contradictory evidence;
+- work at risk of stopping after partial progress while safe authorized actions
+  remain;
+- consequential scope, architecture, side-effect, or irreversible changes;
+- final acceptance or a handoff that must distinguish verified from assumed.
 
 Skip it for:
 
-- One deterministic command.
-- Small mechanical edits with obvious acceptance.
-- Routine implementation where the current task is already clear.
+- one deterministic command;
+- small mechanical edits with obvious acceptance;
+- routine implementation where the request and verification path are already
+  clear.
 
-**中文摘要：** 适合在 `/goal` 起草、绑定与推进，容易漂移的方案型请求，会影响后续工作的架构或目标变更，反复失败或证据矛盾的诊断，风险编辑、迁移、拆除或不可逆副作用，以及最终验收、交接或“这真的完成了吗”检查中使用。不要把它用于单个确定命令、小型机械修改、或已经很清楚的常规实现任务。
+**中文摘要：** 适合容易发生范围或验收漂移的持续任务、用户纠偏、反复失败
+或证据矛盾的诊断、仍有安全且已授权动作却可能过早停止的工作、重大边界变化，
+以及最终验收或交接。单个确定命令、验收显而易见的小型机械修改和路径清楚的
+常规实现不应启用。
 
-## What happens after activation
+## Why there are no hooks
 
-The agent should become less eager to "just continue" when continuation would cross a user-owned boundary.
+Previous releases bundled `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
+`SubagentStart`, `SubagentStop`, and `Stop` hooks. They were removed after a
+capability review for newer advanced models:
 
-You should see:
+- keyword matching could not reliably identify an active goal or completion;
+- detecting that *a* test command ran could not prove that requested behavior
+  was verified;
+- destructive-command tables duplicated host permissions while remaining
+  incomplete and bypassable;
+- persisted lifecycle state could become stale or disagree with the current
+  conversation;
+- contract injection duplicated native context and subagent handoff;
+- every hook added latency, trust surface, host coupling, and false-trigger
+  risk.
 
-- A compact goal slice before sustained work.
-- Fewer speculative questions.
-- More inspection of files, commands, tests, logs, and docs before asking you.
-- Short checkpoints only when your answer changes the next action.
-- Clear re-anchoring after "this is wrong", "go back", "stop", or drift signals.
-- Completion claims tied to evidence instead of confidence.
+The useful behavior is semantic and context-dependent, so it belongs in the
+skill. A future hook should be added only for an observable host gap with trace
+evidence, a deterministic predicate, and a failure mode safer than pass-through.
 
-**中文摘要：** 激活后，agent 在继续会跨越用户拥有的边界时，会更少急着“直接继续”。你应该看到更紧凑的目标切片、更少的空泛追问、更多先查文件/命令/测试/日志/文档的行为、只在答案会改变下一步时做短暂停顿、在收到“错了”“回到前面”“停止”等信号后重新对齐，以及用证据而不是信心来声明完成。
+**中文摘要：** 旧版六类 hooks 已全部移除。它们依赖关键词、命令名和持久化
+状态猜测目标与完成情况，无法证明真正的 acceptance，同时重复宿主权限和
+上下文能力，并引入延迟、信任面、宿主耦合及误触发。只有当真实 trace 证明
+存在宿主缺口、判断条件可确定，且失败模式比直接放行更安全时，才应重新引入
+hook。
 
-## Scope and status
+## Scope and evaluation
 
-Socratic Codex is experimental and intentionally narrow.
+Socratic Codex is intentionally narrow and experimental. Advanced models
+already know how to inspect code, plan, test, and communicate. The skill is
+useful only if it measurably improves decisions at the four checkpoints above.
 
-It is written for advanced models, usually GPT-5.5-class, Claude Sonnet 4.5-class, or stronger, where the model can already inspect evidence, maintain a compact goal contract, and choose when not to ask. Weaker models may follow the words while missing the judgment the plugin relies on.
+Evaluate it with paired task traces, not prose quality. Useful measures are:
 
-This repository ships one plugin for two hosts: Codex (via `.codex-plugin/` and `.agents/plugins/marketplace.json`) and Claude Code (via `.claude-plugin/`). Both hosts load the same `SKILL.md` and shared `hooks/hooks.json`. The behavior still depends on host-specific skill loading, implicit invocation, goal-oriented collaboration, and how each host exposes tools, workspace state, approvals, and acceptance handoff. Porting the text is easy; preserving the behavior is the hard part, so treat non-Codex behavior as less validated.
+- goal-changing actions taken without user-owned confirmation;
+- questions whose answers did not change the next action;
+- third blind attempts in a diagnostic loop;
+- premature handoffs while safe authorized actions remained;
+- completion claims with uncovered requested outcomes;
+- added turns and interruptions on clear routine work.
 
-There is no benchmark yet. The useful measurement is not whether the plugin sounds more careful, but whether it reduces real drift, bad checkpoints, unsupported completion claims, and wasted diagnostic loops in long-running work. That needs task traces and review criteria that are not ready yet.
+No benchmark is currently claimed.
 
-**中文摘要：** 这个插件仍处于实验阶段，并且刻意保持窄范围：它主要面向 GPT-5.5-class、Claude Sonnet 4.5-class 或更强的高级模型，因为这些模型通常已经能检查证据、维护紧凑的目标契约，并判断什么时候不该提问；较弱模型可能只学到字面规则，却缺少协议依赖的判断力。仓库现在为 Codex 和 Claude Code 两个 host 发布同一个 plugin：两端共用 `SKILL.md` 和共享的 `hooks/hooks.json`；行为仍依赖各 host 的 skill 加载、implicit invocation、目标导向协作、工具、工作区状态、审批和验收交接等运行环境。移植文本很容易，保留行为很难，所以非 Codex 行为应视为验证更少。目前还没有 benchmark，真正要评估的是它能否在长任务中减少真实漂移、错误 checkpoint、无支撑的完成声明和浪费性的诊断循环；这还需要尚未准备好的任务 traces 与 review criteria。
-
-## Why "Socratic"
-
-"Socratic" points to the discipline of using questions to expose assumptions, clarify intent, and test whether an answer is actually justified.
-
-In this plugin, that does not mean the agent should keep interrogating the user. It means the agent should question its own assumptions first, inspect available evidence, and ask the user only when the answer would change the next action.
-
-**中文摘要：** “Socratic” 指的是用问题暴露假设、澄清意图、检验答案是否真的站得住。放在这个插件里，它不是让 agent 不停追问用户，而是要求 agent 先质疑自己的假设、先检查可获得的证据，只在用户的答案会改变下一步行动时才提问。
+**中文摘要：** 该 skill 仍是刻意保持窄范围的实验性能力。新模型并不需要
+另一套“如何写代码”的教程；它的价值只能体现在四个 checkpoint 是否改善
+真实决策。应使用成对任务 traces 衡量目标越界、无效提问、盲目重试、仍有
+安全动作时过早交接、无证据完成声明及对普通任务增加的干扰，目前不声明已有
+benchmark。
 
 ## Local checkout install
-
-If you are installing from a local clone:
 
 ```bash
 git clone https://github.com/nshcr/socratic-codex.git
@@ -159,35 +158,28 @@ codex plugin marketplace add .
 codex plugin add socratic-codex@socratic-codex
 ```
 
-If the marketplace is already added, skip `codex plugin marketplace add ...` and run only `codex plugin add socratic-codex@socratic-codex`.
+For Claude Code, use `claude plugin marketplace add .` followed by
+`claude plugin install socratic-codex@socratic-codex`.
 
-For Codex Desktop, install with the same CLI commands, then restart the app so it picks up the plugin.
-Review and trust the bundled hooks after install if you want hook-backed guardrails to run.
-
-For Claude Code, the same clone works:
-
-```bash
-claude plugin marketplace add .
-claude plugin install socratic-codex@socratic-codex
-```
-
-**中文摘要：** 如果从本地 clone 安装，进入仓库后执行 `codex plugin marketplace add .` 和 `codex plugin add socratic-codex@socratic-codex`。如果 marketplace 已经添加过，只需要执行安装命令。Codex Desktop 使用同一套 CLI 安装命令，安装后重启应用即可；如果要运行随插件打包的 hook-backed guardrails，安装后还需要完成这些 hooks 的 review 和 trust。Claude Code 用户在同一份 clone 里执行 `claude plugin marketplace add .` 和 `claude plugin install socratic-codex@socratic-codex` 即可。
+**中文摘要：** 本地安装时先 clone 并进入仓库，再把当前目录加入对应宿主的
+marketplace 并安装 `socratic-codex@socratic-codex`。
 
 ## Repository layout
 
 ```text
-./.agents/plugins/marketplace.json    # Codex marketplace
-./.claude-plugin/marketplace.json     # Claude Code marketplace
+./.agents/plugins/marketplace.json
+./.claude-plugin/marketplace.json
 plugins/socratic-codex/
-  .codex-plugin/plugin.json           # Codex plugin manifest
-  .claude-plugin/plugin.json          # Claude Code plugin manifest
-  hooks/hooks.json                    # Shared lifecycle hooks (both hosts)
-  hooks/socratic_hooks.py             # Hook logic: ledger, contract restore, audit
-  skills/socratic-codex/SKILL.md      # Shared skill core (both hosts)
-  skills/socratic-codex/references/   # Progressive-disclosure protocol details
+  .codex-plugin/plugin.json
+  .claude-plugin/plugin.json
+  skills/socratic-codex/SKILL.md
   skills/socratic-codex/agents/openai.yaml
 ```
 
-The source of truth is `skills/socratic-codex/SKILL.md`, with the full Diagnostic Recovery and Acceptance Close protocols split into `references/` so simple invocations pay less context. Hooks in `hooks/` are lifecycle guardrails aligned to that skill, not a second policy layer. Both hosts share `hooks/hooks.json`: its commands reference `${CLAUDE_PLUGIN_ROOT}`, which Claude Code sets natively and Codex sets for compatibility. Runtime state (session ledger, bounded audit log) lives in the plugin data directory; session-scoped goal contracts live in the workspace at `.socratic/contracts/<session-id>.md` and are meant for sustained work, not deterministic one-step tasks. Codex marketplace discovery starts at `.agents/plugins/marketplace.json`; Claude Code discovery starts at `.claude-plugin/marketplace.json`.
+`SKILL.md` is the only behavioral source of truth. The two manifests package
+the same skill for their respective hosts. The plugin currently ships no hooks,
+subagent components, MCP servers, or LSP servers.
 
-**中文摘要：** 核心行为以 `skills/socratic-codex/SKILL.md` 为准，Diagnostic Recovery 和 Acceptance Close 的完整协议拆到 `references/` 按需加载，以降低简单调用的上下文成本。`hooks/` 是与 skill 对齐的 lifecycle guardrails，不是第二套 policy 层。两个 host 共用 `hooks/hooks.json`，其中命令引用 `${CLAUDE_PLUGIN_ROOT}`，Claude Code 原生设置该变量，Codex 为兼容也会设置。运行时状态包括 session ledger 和有上限的 audit log，存在插件数据目录；按会话隔离的目标契约存在工作区 `.socratic/contracts/<session-id>.md`，主要用于长任务，不用于确定性单步任务。Codex 的 marketplace 入口是 `.agents/plugins/marketplace.json`，Claude Code 的入口是 `.claude-plugin/marketplace.json`。
+**中文摘要：** `SKILL.md` 是唯一行为事实源；Codex 与 Claude Code 的 manifest
+只负责为各自宿主打包同一份 skill。当前插件没有 hooks、subagent、MCP 或
+LSP 运行时组件。
