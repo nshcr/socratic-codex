@@ -1,6 +1,6 @@
 {
   "name": "socratic-codex",
-  "version": "1.5.1",
+  "version": "2.0.0",
   "description": "Checkpoint policy for advanced coding agents: preserve intent, sustain authorized progress, recover with falsifiable diagnosis, and close against evidence.",
   "author": {
     "name": "Junius Chen"
