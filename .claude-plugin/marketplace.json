@@ -5,14 +5,14 @@
     "url": "https://github.com/nshcr"
   },
   "metadata": {
-    "description": "Goal-lifecycle control for coding agents.",
+    "description": "Checkpoint policy for sustained, evidence-backed coding goals.",
     "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "socratic-codex",
       "source": "./plugins/socratic-codex",
-      "description": "Goal-lifecycle control for coding agents: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
+      "description": "Checkpoint policy for advanced coding agents: preserve intent, sustain authorized progress, recover with falsifiable diagnosis, and close against evidence.",
       "category": "productivity",
       "keywords": [
         "goal-steering",

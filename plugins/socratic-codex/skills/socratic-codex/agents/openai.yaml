@@ -1,6 +1,6 @@
 interface:
   display_name: "Socratic Codex"
-  short_description: "Prevent goal drift in long tasks"
-  default_prompt: "Use $socratic-codex to keep this long task aligned."
+  short_description: "Sustain and verify long coding goals."
+  default_prompt: "Use $socratic-codex to carry this goal through evidence-backed acceptance."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

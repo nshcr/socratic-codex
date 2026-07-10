@@ -1,7 +1,7 @@
 {
   "name": "socratic-codex",
   "version": "1.5.1",
-  "description": "Goal-lifecycle control for coding agents: bind intent to a persisted goal contract, gate risky changes, restore the contract after compaction, and block unverified completion claims with behavioral evidence checks.",
+  "description": "Checkpoint policy for advanced coding agents: preserve intent, sustain authorized progress, recover with falsifiable diagnosis, and close against evidence.",
   "author": {
     "name": "Junius Chen"
   },
@@ -18,8 +18,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Socratic Codex",
-    "shortDescription": "Prevent goal drift in long tasks.",
-    "longDescription": "Socratic Codex protects user-owned intent from discovery through acceptance. It persists the goal contract to .socratic/contract.md, restores it after compaction or resume, re-anchors on brake or drift signals, asks only action-changing user-owned questions, and blocks completion claims until behavioral evidence (verification commands run, or a fresh Verification record in the contract) matches done criteria. Use it for /goal drafting and steering, sustained solution-shaped work, risky scope or architecture changes, stuck diagnostics, and acceptance handoff; skip deterministic one-step work unless an active lifecycle is at risk.",
+    "shortDescription": "Sustain and verify long coding goals.",
+    "longDescription": "Socratic Codex adds four checkpoints for advanced coding agents: preserve the user's goal in native host state, decide from inspected evidence at user-owned boundaries, replace blind retries with falsifiable diagnosis, and continue safe authorized work until requested outcomes match observed evidence or a real terminal condition is reached. Use it for long-running goal steering, drift recovery, premature-exit prevention, consequential goal changes, and acceptance; skip clear routine work.",
     "developerName": "Junius Chen",
     "category": "Productivity",
     "capabilities": [
@@ -28,9 +28,9 @@
     ],
     "websiteURL": "https://github.com/nshcr/socratic-codex",
     "defaultPrompt": [
-      "Use $socratic-codex to bind this goal.",
-      "Use $socratic-codex to steer this lifecycle.",
-      "Use $socratic-codex to close acceptance."
+      "Use $socratic-codex to carry this goal through evidence-backed acceptance.",
+      "Use $socratic-codex to recover this stuck investigation.",
+      "Use $socratic-codex to close this request against evidence."
     ]
   }
 }
