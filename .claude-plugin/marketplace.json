@@ -5,20 +5,20 @@
     "url": "https://github.com/nshcr"
   },
   "metadata": {
-    "description": "Checkpoint policy for sustained, evidence-backed coding goals.",
+    "description": "Evidence gates for consequential coding work.",
     "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "socratic-codex",
       "source": "./plugins/socratic-codex",
-      "description": "Checkpoint policy for advanced coding agents: preserve intent, sustain authorized progress, recover with falsifiable diagnosis, and close against evidence.",
+      "description": "Gate material goal changes, pivot at evidence plateaus, and close claims with proportionate proof.",
       "category": "productivity",
       "keywords": [
-        "goal-steering",
+        "evidence-discipline",
         "socratic",
         "diagnostics",
-        "acceptance"
+        "verification"
       ]
     }
   ]

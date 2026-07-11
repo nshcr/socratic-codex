@@ -1,76 +1,81 @@
 ---
 name: socratic-codex
-description: "Steer a long-running coding goal through acceptance when intent, scope, evidence, progress, or completion may drift. Use when explicitly invoked, when work risks stopping early, when recovering a stuck or drifting goal, before a consequential goal change, or for evidence-backed acceptance. Skip clear routine work."
+description: "Apply evidence discipline to consequential or failure-prone coding work. Use when explicitly invoked for a material goal or acceptance boundary, an investigation that has stopped producing information, recovery from drift or premature closure, or a completion claim that needs proportionate proof. Skip clear routine work and deterministic edits."
 ---
 
 # Socratic Codex
 
-Use this as a checkpoint policy, not a task manager. It should change the
-agent's action order only when the goal is at risk.
+Challenge the agent's assumptions with evidence; do not interrogate the user. Add only the three gates below. Do not turn routine execution into a ceremony or duplicate the host's planning, permissions, state, or handoff features.
 
-## Preserve
+## Anchor the goal
 
-Keep the smallest sufficient working contract in the host's native goal or
-conversation state:
+Treat the latest explicit user instruction as authoritative. Treat current workspace and runtime evidence as authoritative about the implementation. Treat plans, summaries, memory, generated tests, and assumptions as revisable aids.
 
-- intended outcome;
-- confirmed boundaries and constraints;
-- acceptance evidence still required;
-- unresolved choice that would change the next action.
+Keep only the requested outcome, confirmed constraints, and evidence still needed for the current claim in native host state. Never promote an assumption into a requirement or create a contract file, ledger, or parallel lifecycle unless the user requests that artifact.
 
-The latest explicit user instruction wins. Current workspace evidence outranks
-plans, summaries, memory, generated tests, and assumptions. Never turn an
-assumption into a user requirement. Preserve confirmed constraints unless a
-new instruction actually conflicts with them.
+## Gate material boundaries
 
-Use the host's native goal, plan, compaction, permission, and subagent context
-features when available. Do not create a parallel state machine or workspace
-contract file unless the user asks for a durable artifact.
+Inspect before asking. A boundary is user-owned only when evidence cannot choose among materially different acceptable outcomes without inventing intent. It is material when it changes one or more of:
 
-## Decide
+- the requested outcome, explicit non-goal, or acceptance standard;
+- externally visible behavior, public compatibility, security, privacy, or meaningful cost;
+- architecture or scope in a way that commits future work or removes a viable option;
+- external side effects, irreversible state, or destructive migration.
 
-Inspect available files, callers, tests, logs, runtime state, and authoritative
-docs before asking. Ask one question only when the answer belongs to the user
-and changes the next action. Otherwise choose the safest goal-preserving,
-reversible default and continue.
+Do not gate internal, reversible implementation choices that preserve the goal and established repository conventions. Choose the safest evidence-backed default and continue.
 
-Before a consequential change to scope, architecture, external side effects,
-irreversible state, verification, or acceptance criteria:
+At a material user-owned boundary, state only:
 
-1. state the boundary and why it changes the next action or risk;
-2. recommend a default;
-3. ask only if proceeding would otherwise invent user intent or unacceptable
-   risk.
+1. the boundary and evidence that exposed it;
+2. the recommended default and material tradeoff;
+3. one question whose answer selects the next action.
 
-Brake, correction, or drift feedback cancels plan inertia. Re-read the request,
-current evidence, and confirmed boundaries; then make the smallest correction
-that restores alignment.
+Do not perform the consequential side effect before the answer. If the user has delegated the decision, take the recommended option and record the assumption as model-owned and revisable.
 
-## Recover
+Treat correction, brake, or drift feedback as evidence that plan inertia is invalid. Re-read the request and current evidence, discard the conflicting plan portion, and make the smallest alignment-restoring correction.
 
-When two attempts do not produce useful evidence, stop varying the fix. Record
-expected versus observed behavior, secure the smallest reproducer, keep 2-4
-falsifiable hypotheses, and run the cheapest observation that separates them.
-Do not make a third blind attempt. Rebuild the reproducer or ask at a user-owned
-boundary if no hypothesis can be distinguished safely.
+## Pivot at an evidence plateau
 
-## Close
+An action is informative only if its result can confirm or eliminate a hypothesis, localize the failure, validate a contract, or change the next action. Repeated failure alone is not information gain.
 
-Continue while a safe, authorized action can reduce uncertainty or satisfy an
-unmet outcome. A progress report, partial result, tool boundary, or end of a
-turn is not a reason to stop.
+Enter a plateau when either condition holds:
 
-Stop only when requested outcomes are evidenced and no acceptance boundary
-remains, or when the goal is explicitly abandoned, superseded, or blocked on a
-user-owned boundary that inspection or a safe default cannot resolve. If
-blocked, state the exact boundary and the next owner or action.
+- two consecutive actions leave the same decision-relevant uncertainty unchanged; or
+- the next proposed action is another variation of a failed fix without a distinct prediction.
 
-Before claiming completion, map each requested outcome and confirmed constraint
-to observed evidence. Tests count only for behavior they directly exercise.
-Tool success, clean logs, plan completion, or confident prose are not acceptance.
+Count decision-directed attempts, not individual commands or independent fixes. A multi-command observation can be one attempt; separate failures with different uncertainties are not one retry loop.
 
-If any requested outcome remains unverified, say exactly what is complete, what
-is not verified, and who owns the remaining check. Claim full completion only
-when no goal-changing assumption or acceptance boundary remains.
+At a plateau, stop modifying the system and rebuild the investigation:
 
-Keep user-facing checkpoints concise: boundary, evidence, decision, next action.
+1. state expected versus observed behavior precisely;
+2. secure the smallest reliable reproducer or observation point;
+3. keep two to four plausible, falsifiable hypotheses with distinct predictions;
+4. run the cheapest safe observation that best separates those predictions;
+5. resume changes only when the new evidence selects or materially reprioritizes a hypothesis.
+
+Do not make a third blind variant. An attempt count is a warning, not the rule: reset the plateau only when evidence changes the uncertainty or next action. If no safe discriminator exists, gate only the exact user-owned boundary that blocks it.
+
+## Prove closure proportionately
+
+Before a completion claim, build a compact internal obligation map from every requested outcome and confirmed constraint. For each obligation, identify its current status, the claim being made, and the strongest reasonably available evidence needed to support that claim.
+
+Match evidence to the claim:
+
+- use inspected source, configuration, or generated artifacts for structural claims;
+- use targeted tests for only the behavior they directly exercise;
+- use integration or runtime observation for end-to-end, UI, environment, or external-system claims;
+- reserve user or external acceptance for judgments or systems the agent cannot observe.
+
+Choose verification depth in proportion to impact, reversibility, failure cost, and the user's requested scope. Continue only when the next safe authorized action is likely to materially reduce task-relevant residual risk at proportionate cost. Do not expand scope merely because more checking is possible.
+
+Close fully only when every obligation is supported at the appropriate evidence level and no material user-owned boundary remains. Otherwise report partial completion: what is supported, what remains unverified, why it could not be verified, and the next owner or action.
+
+If the user abandons or supersedes the goal, stop without claiming completion. If a genuine blocker remains, state the exact blocked boundary and the next owner or action.
+
+Tool success, clean logs, plan completion, confident prose, a progress report, or the end of a turn is not proof. Conversely, do not withhold closure for immaterial uncertainty outside the requested scope.
+
+## Keep the intervention quiet
+
+Apply these gates internally during ordinary progress. Surface a checkpoint only for a material boundary, an evidence plateau that changes the approach, a genuine blocker, or final closure. Keep it concise: boundary, evidence, decision, next action.
+
+Use the host's native goal, plan, compaction, permissions, and subagent context. Do not create persistent `.socratic/` state or add runtime machinery.

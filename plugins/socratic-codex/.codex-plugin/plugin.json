@@ -1,7 +1,7 @@
 {
   "name": "socratic-codex",
   "version": "2.0.0",
-  "description": "Checkpoint policy for advanced coding agents: preserve intent, sustain authorized progress, recover with falsifiable diagnosis, and close against evidence.",
+  "description": "Evidence discipline for consequential coding work: gate material goal changes, pivot when investigation stops learning, and close claims with proportionate proof.",
   "author": {
     "name": "Junius Chen"
   },
@@ -10,16 +10,16 @@
   "repository": "https://github.com/nshcr/socratic-codex",
   "keywords": [
     "codex",
-    "goal-steering",
+    "evidence-discipline",
     "socratic",
     "diagnostics",
-    "acceptance"
+    "verification"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Socratic Codex",
-    "shortDescription": "Sustain and verify long coding goals.",
-    "longDescription": "Socratic Codex adds four checkpoints for advanced coding agents: preserve the user's goal in native host state, decide from inspected evidence at user-owned boundaries, replace blind retries with falsifiable diagnosis, and continue safe authorized work until requested outcomes match observed evidence or a real terminal condition is reached. Use it for long-running goal steering, drift recovery, premature-exit prevention, consequential goal changes, and acceptance; skip clear routine work.",
+    "shortDescription": "Gate drift, stalled diagnosis, and weak closure.",
+    "longDescription": "Socratic Codex adds three evidence gates for consequential coding work: ask only at material user-owned boundaries, pivot from repeated fixes when evidence stops changing the next action, and close requested outcomes with claim-matched proof at a depth proportionate to risk. It stays quiet during routine execution, prevents both premature closure and unbounded verification, and delegates planning, permissions, state, and handoff to the host.",
     "developerName": "Junius Chen",
     "category": "Productivity",
     "capabilities": [
@@ -28,9 +28,9 @@
     ],
     "websiteURL": "https://github.com/nshcr/socratic-codex",
     "defaultPrompt": [
-      "Use $socratic-codex to carry this goal through evidence-backed acceptance.",
-      "Use $socratic-codex to recover this stuck investigation.",
-      "Use $socratic-codex to close this request against evidence."
+      "Use $socratic-codex to protect material boundaries and close this task with proportionate proof.",
+      "Use $socratic-codex to recover this investigation from an evidence plateau.",
+      "Use $socratic-codex to test this completion claim against claim-matched evidence."
     ]
   }
 }
