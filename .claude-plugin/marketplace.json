@@ -12,7 +12,7 @@
     {
       "name": "socratic-codex",
       "source": "./plugins/socratic-codex",
-      "description": "Gate material goal changes, pivot at evidence plateaus, and close claims with proportionate proof.",
+      "description": "Gate material user-owned decisions, pivot at evidence plateaus, and close claims with proportionate proof.",
       "category": "productivity",
       "keywords": [
         "evidence-discipline",

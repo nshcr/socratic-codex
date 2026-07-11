@@ -1,7 +1,7 @@
 {
   "name": "socratic-codex",
   "version": "2.0.0",
-  "description": "Evidence discipline for consequential coding work: gate material goal changes, pivot when investigation stops learning, and close claims with proportionate proof.",
+  "description": "Evidence discipline for consequential coding work: gate material user-owned decisions, pivot when investigation stops learning, and close claims with proportionate proof.",
   "author": {
     "name": "Junius Chen"
   },
@@ -18,7 +18,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Socratic Codex",
-    "shortDescription": "Gate drift, stalled diagnosis, and weak closure.",
+    "shortDescription": "Gate drift, stalled diagnosis, and proof.",
     "longDescription": "Socratic Codex adds three evidence gates for consequential coding work: ask only at material user-owned boundaries, pivot from repeated fixes when evidence stops changing the next action, and close requested outcomes with claim-matched proof at a depth proportionate to risk. It stays quiet during routine execution, prevents both premature closure and unbounded verification, and delegates planning, permissions, state, and handoff to the host.",
     "developerName": "Junius Chen",
     "category": "Productivity",
