@@ -1,6 +1,9 @@
 # Socratic Codex
 
-**Socratic Codex is a compact checkpoint policy for advanced coding agents on Codex and Claude Code.**
+![Socratic Codex — Evidence-backed checkpoints for coding agents](assets/social-preview.jpg)
+
+**A compact checkpoint policy for evidence-backed goal alignment in Codex and
+Claude Code.**
 
 It adds checkpoints where capable models still benefit from an explicit control
 policy: goal drift, consequential boundary changes, stalled diagnosis, and
